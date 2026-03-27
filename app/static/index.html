@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PiCam IR Control Panel</title>
+<style>
+:root {
+  --bg: #111;
+  --surface: #1a1a1a;
+  --surface2: #222;
+  --border: #333;
+  --text: #ddd;
+  --text-dim: #888;
+  --accent: #4caf50;
+  --accent-dim: #2e7d32;
+  --danger: #c62828;
+  --mono: 'Consolas', 'SF Mono', 'Fira Code', monospace;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+/* Layout */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+.top-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.top-bar h1 {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+.stream-panel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  position: relative;
+  overflow: hidden;
+}
+.stream-panel img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.stream-overlay {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--accent);
+  text-shadow: 0 0 4px #000;
+  pointer-events: none;
+}
+.control-panel {
+  width: 320px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Connection bar */
+.conn-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex: 1;
+}
+.conn-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.conn-row label {
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--danger);
+  flex-shrink: 0;
+}
+.status-dot.connected { background: var(--accent); }
+.status-dot.reconnecting { background: #f9a825; animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: 0.4; } }
+.status-label {
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+/* Buttons */
+button {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface2);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+button:hover { background: var(--border); }
+button.primary { background: var(--accent-dim); border-color: var(--accent); }
+button.primary:hover { background: var(--accent); color: #000; }
+button.danger { border-color: var(--danger); color: #ef5350; }
+button.danger:hover { background: var(--danger); color: #fff; }
+
+/* Control groups */
+.control-group {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.control-group-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+.control-group.disabled { opacity: 0.4; pointer-events: none; }
+
+/* Individual controls */
+.control {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.control-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.control-label {
+  font-size: 13px;
+}
+.control-value {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--accent);
+}
+
+/* Slider */
+input[type="range"] {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+}
+
+/* Toggle switch */
+.toggle {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  flex-shrink: 0;
+}
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-track {
+  position: absolute;
+  inset: 0;
+  background: var(--border);
+  border-radius: 11px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition: transform 0.2s, background 0.2s;
+}
+.toggle input:checked + .toggle-track {
+  background: var(--accent-dim);
+}
+.toggle input:checked + .toggle-track::after {
+  transform: translateX(18px);
+  background: var(--accent);
+}
+
+/* Select dropdown */
+select {
+  padding: 4px 8px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+/* Inline control with toggle */
+.control-inline {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Footer */
+.panel-footer {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* Stream address row */
+.stream-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.stream-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.stream-row label {
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .main { flex-direction: column; }
+  .control-panel {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid var(--border);
+    max-height: 50vh;
+  }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- Top bar -->
+  <div class="top-bar">
+    <h1>PiCam IR Control</h1>
+
+    <div class="conn-row">
+      <label>Stream</label>
+      <input type="text" id="streamAddr" value="" placeholder="inference-server:8090">
+      <button id="streamBtn" class="primary">Connect</button>
+    </div>
+
+    <div class="conn-row">
+      <label>Camera WS</label>
+      <input type="text" id="wsAddr" value="raspberrypi:8082" placeholder="raspberrypi:8082">
+      <button id="wsBtn" class="primary">Connect</button>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:6px;">
+      <div class="status-dot" id="statusDot"></div>
+      <span class="status-label" id="statusLabel">disconnected</span>
+    </div>
+  </div>
+
+  <div class="main">
+    <!-- Stream -->
+    <div class="stream-panel">
+      <img id="streamImg" alt="No stream">
+      <div class="stream-overlay" id="streamOverlay"></div>
+    </div>
+
+    <!-- Controls -->
+    <div class="control-panel">
+
+      <!-- IR Mode -->
+      <div class="control-group">
+        <div class="control-group-title">IR Processing</div>
+        <div class="control">
+          <div class="control-header">
+            <span class="control-label">IR Mode</span>
+          </div>
+          <select id="ir_mode" data-setting="ir_mode">
+            <option value="off">Off</option>
+            <option value="grayscale">Grayscale</option>
+            <option value="blue_channel">Blue Channel</option>
+          </select>
+        </div>
+        <div class="control-inline">
+          <span class="control-label">CLAHE Enhancement</span>
+          <label class="toggle">
+            <input type="checkbox" id="clahe_enabled" data-setting="clahe_enabled">
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Exposure -->
+      <div class="control-group" id="exposureGroup">
+        <div class="control-group-title">Exposure</div>
+        <div class="control-inline">
+          <span class="control-label">Auto Exposure</span>
+          <label class="toggle">
+            <input type="checkbox" id="ae_enable" data-setting="ae_enable">
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+        <div id="manualExposure">
+          <div class="control" style="margin-bottom:12px">
+            <div class="control-header">
+              <span class="control-label">Exposure Time</span>
+              <span class="control-value" id="exposure_time_val">30000 µs</span>
+            </div>
+            <input type="range" id="exposure_time" data-setting="exposure_time"
+                   min="1000" max="100000" step="1000" value="30000">
+          </div>
+          <div class="control">
+            <div class="control-header">
+              <span class="control-label">Analogue Gain</span>
+              <span class="control-value" id="analogue_gain_val">4.0</span>
+            </div>
+            <input type="range" id="analogue_gain" data-setting="analogue_gain"
+                   min="1.0" max="16.0" step="0.5" value="4.0">
+          </div>
+        </div>
+      </div>
+
+      <!-- JPEG -->
+      <div class="control-group">
+        <div class="control-group-title">Encoding</div>
+        <div class="control">
+          <div class="control-header">
+            <span class="control-label">JPEG Quality</span>
+            <span class="control-value" id="jpeg_quality_val">80</span>
+          </div>
+          <input type="range" id="jpeg_quality" data-setting="jpeg_quality"
+                 min="1" max="100" step="1" value="80">
+        </div>
+      </div>
+
+      <!-- Reset -->
+      <div class="panel-footer">
+        <button class="danger" id="resetBtn" style="width:100%">Reset to Defaults</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  // ---- Elements ----
+  const $ = id => document.getElementById(id);
+  const streamImg    = $('streamImg');
+  const streamAddr   = $('streamAddr');
+  const streamBtn    = $('streamBtn');
+  const wsAddr       = $('wsAddr');
+  const wsBtn        = $('wsBtn');
+  const statusDot    = $('statusDot');
+  const statusLabel  = $('statusLabel');
+  const resetBtn     = $('resetBtn');
+  const manualExpo   = $('manualExposure');
+
+  // Default stream address = current host on port 8090
+  streamAddr.value = location.hostname + ':8090';
+
+  // ---- Stream (MJPEG) ----
+  function connectStream() {
+    const addr = streamAddr.value.trim();
+    if (!addr) return;
+    const url = (addr.startsWith('http') ? addr : 'http://' + addr) + '/stream';
+    streamImg.src = url;
+  }
+  streamBtn.addEventListener('click', connectStream);
+  streamAddr.addEventListener('keydown', e => { if (e.key === 'Enter') connectStream(); });
+
+  // Auto-connect stream on load
+  setTimeout(connectStream, 300);
+
+  // ---- WebSocket ----
+  let ws = null;
+  let reconnectTimer = null;
+  let reconnectDelay = 1000;
+  const MAX_DELAY = 16000;
+
+  function setStatus(state) {
+    statusDot.className = 'status-dot ' + state;
+    statusLabel.textContent = state;
+  }
+
+  function connectWS() {
+    if (ws) { ws.onclose = null; ws.close(); }
+    clearTimeout(reconnectTimer);
+
+    const addr = wsAddr.value.trim();
+    if (!addr) return;
+    const url = (addr.startsWith('ws') ? addr : 'ws://' + addr);
+
+    setStatus('reconnecting');
+    ws = new WebSocket(url);
+
+    ws.onopen = () => {
+      setStatus('connected');
+      reconnectDelay = 1000;
+      ws.send(JSON.stringify({ type: 'get' }));
+    };
+
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'settings' && msg.data) {
+          applySettings(msg.data);
+        }
+      } catch {}
+    };
+
+    ws.onclose = () => {
+      setStatus('reconnecting');
+      reconnectTimer = setTimeout(() => {
+        reconnectDelay = Math.min(reconnectDelay * 2, MAX_DELAY);
+        connectWS();
+      }, reconnectDelay);
+    };
+
+    ws.onerror = () => {};
+  }
+
+  wsBtn.addEventListener('click', () => { reconnectDelay = 1000; connectWS(); });
+  wsAddr.addEventListener('keydown', e => { if (e.key === 'Enter') { reconnectDelay = 1000; connectWS(); } });
+
+  // ---- Settings sync ----
+  let currentSettings = {};
+
+  function applySettings(data) {
+    currentSettings = { ...data };
+
+    // IR mode
+    if (data.ir_mode !== undefined) $('ir_mode').value = data.ir_mode;
+
+    // Toggles
+    if (data.clahe_enabled !== undefined) $('clahe_enabled').checked = data.clahe_enabled;
+    if (data.ae_enable !== undefined) {
+      $('ae_enable').checked = data.ae_enable;
+      updateAEState(data.ae_enable);
+    }
+
+    // Sliders
+    if (data.exposure_time !== undefined) {
+      $('exposure_time').value = data.exposure_time;
+      $('exposure_time_val').textContent = data.exposure_time + ' µs';
+    }
+    if (data.analogue_gain !== undefined) {
+      $('analogue_gain').value = data.analogue_gain;
+      $('analogue_gain_val').textContent = parseFloat(data.analogue_gain).toFixed(1);
+    }
+    if (data.jpeg_quality !== undefined) {
+      $('jpeg_quality').value = data.jpeg_quality;
+      $('jpeg_quality_val').textContent = data.jpeg_quality;
+    }
+  }
+
+  function updateAEState(enabled) {
+    manualExpo.style.opacity = enabled ? '0.4' : '1';
+    manualExpo.style.pointerEvents = enabled ? 'none' : 'auto';
+  }
+
+  // ---- Debounced send ----
+  let sendTimer = null;
+  function sendSetting(key, value) {
+    clearTimeout(sendTimer);
+    sendTimer = setTimeout(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        const payload = { type: 'set', data: { [key]: value } };
+        ws.send(JSON.stringify(payload));
+      }
+    }, 200);
+  }
+
+  // ---- Event binding ----
+  // Select
+  $('ir_mode').addEventListener('change', function() {
+    sendSetting('ir_mode', this.value);
+  });
+
+  // Toggles
+  $('clahe_enabled').addEventListener('change', function() {
+    sendSetting('clahe_enabled', this.checked);
+  });
+  $('ae_enable').addEventListener('change', function() {
+    updateAEState(this.checked);
+    sendSetting('ae_enable', this.checked);
+  });
+
+  // Sliders
+  $('exposure_time').addEventListener('input', function() {
+    $('exposure_time_val').textContent = this.value + ' µs';
+    sendSetting('exposure_time', parseInt(this.value));
+  });
+  $('analogue_gain').addEventListener('input', function() {
+    $('analogue_gain_val').textContent = parseFloat(this.value).toFixed(1);
+    sendSetting('analogue_gain', parseFloat(this.value));
+  });
+  $('jpeg_quality').addEventListener('input', function() {
+    $('jpeg_quality_val').textContent = this.value;
+    sendSetting('jpeg_quality', parseInt(this.value));
+  });
+
+  // Reset
+  resetBtn.addEventListener('click', () => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'reset' }));
+    }
+  });
+
+  // Auto-connect WS on load
+  setTimeout(connectWS, 500);
+})();
+</script>
+</body>
+</html>
