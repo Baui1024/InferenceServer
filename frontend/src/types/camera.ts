@@ -1,7 +1,7 @@
 export interface Camera {
   id: string;
   name: string;
-  type: 'esp32' | 'rpi';
+  type: 'esp32' | 'rpi' | 'recording';
   host: string;
   port: number;
   enabled: boolean;
@@ -25,6 +25,8 @@ export interface Camera {
   motion_min_area_percent: number;
   // Camera HW (RPi only)
   camera_ws_port: number;
+  // Recording playback
+  recording_id?: string;
   // Runtime (attached by server)
   stats?: CameraStats;
 }
@@ -36,6 +38,7 @@ export interface CameraStats {
   inference_ms: number;
   detection_count: number;
   frame_count: number;
+  recording?: boolean;
 }
 
 export interface CameraHWSettings {
@@ -45,6 +48,23 @@ export interface CameraHWSettings {
   exposure_time?: number;
   analogue_gain?: number;
   jpeg_quality?: number;
+}
+
+export interface Recording {
+  id: string;
+  camera_id: string;
+  camera_name: string;
+  filename: string;
+  start_time: string;
+  duration_s: number;
+  frame_count: number;
+  fps: number;
+  resolution: [number, number] | null;
+  size_mb?: number;
+}
+
+export interface ServerConfig {
+  recording_enabled: boolean;
 }
 
 export interface WSMessage {

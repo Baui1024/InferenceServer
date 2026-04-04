@@ -10,7 +10,8 @@ import sys
 
 from loguru import logger
 
-from app.config import WEB_HOST, WEB_PORT, CAMERAS_FILE
+from app.config import WEB_HOST, WEB_PORT, CAMERAS_FILE, RECORDINGS_DIR
+import app.config as config
 from app.camera_store import CameraStore
 from app.pipeline_manager import PipelineManager
 from app.web_server import WebStreamServer
@@ -32,6 +33,15 @@ logger.add(
 
 
 async def main() -> None:
+    # --record CLI flag overrides config/env
+    if "--record" in sys.argv:
+        config.RECORDING_ENABLED = True
+
+    if config.RECORDING_ENABLED:
+        from pathlib import Path
+        Path(RECORDINGS_DIR).mkdir(exist_ok=True)
+        logger.info(f"Recording enabled — saving to {RECORDINGS_DIR}/")
+
     store = CameraStore(path=CAMERAS_FILE)
     manager = PipelineManager()
     server = WebStreamServer(store=store, manager=manager, host=WEB_HOST, port=WEB_PORT)

@@ -51,6 +51,8 @@ export default function CameraSettings({ camera }: Props) {
                   <option value="yolov8m.pt">YOLOv8 Medium</option>
                   <option value="yolo11m.pt">YOLO11 Medium</option>
                   <option value="yolov8l.pt">YOLOv8 Large</option>
+                  <option value="yolov8x.pt">YOLOv8 XL</option>
+                  <option value="yolo11x.pt">YOLO11 XL</option>
                 </Form.Select>
               </Form.Group>
               <Form.Group className="mb-3">

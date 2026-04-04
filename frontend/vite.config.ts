@@ -17,6 +17,12 @@ export default defineConfig({
       '/stream': {
         target: 'http://localhost:8090',
       },
+      '/snapshot': {
+        target: 'http://localhost:8090',
+      },
+      '/recordings': {
+        target: 'http://localhost:8090',
+      },
     },
   },
 })

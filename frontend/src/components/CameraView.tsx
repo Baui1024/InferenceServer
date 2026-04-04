@@ -1,11 +1,11 @@
 import { Tab, Tabs, Badge, Button } from 'react-bootstrap';
-import { BsArrowLeft, BsTrash } from 'react-icons/bs';
+import { BsArrowLeft, BsTrash, BsRecordCircle, BsStopCircle } from 'react-icons/bs';
 import { useCameras } from '../context/CameraContext';
 import CameraSettings from './CameraSettings';
 import CameraHWSettingsPanel from './CameraHWSettings';
 
 export default function CameraView() {
-  const { cameras, selectedId, selectCamera, send } = useCameras();
+  const { cameras, selectedId, selectCamera, send, serverConfig } = useCameras();
   const camera = cameras.find(c => c.id === selectedId);
 
   if (!camera) {
@@ -16,10 +16,27 @@ export default function CameraView() {
     );
   }
 
+  const isRecording = camera.stats?.recording ?? false;
+  const isPlayback = camera.type === 'recording';
+
   const handleRemove = () => {
     if (confirm(`Remove "${camera.name}"?`)) {
       send('remove_camera', { id: camera.id });
       selectCamera(null);
+    }
+  };
+
+  const handleStopPlayback = async () => {
+    // Stop the playback pipeline by stopping the camera
+    send('remove_camera', { id: camera.id });
+    selectCamera(null);
+  };
+
+  const toggleRecording = () => {
+    if (isRecording) {
+      send('stop_recording', { id: camera.id });
+    } else {
+      send('start_recording', { id: camera.id });
     }
   };
 
@@ -42,9 +59,25 @@ export default function CameraView() {
             </span>
           )}
           <div className="flex-grow-1" />
-          <Button variant="outline-danger" size="sm" onClick={handleRemove}>
-            <BsTrash />
-          </Button>
+          {serverConfig.recording_enabled && !isPlayback && (
+            <Button
+              variant={isRecording ? 'danger' : 'outline-danger'}
+              size="sm"
+              onClick={toggleRecording}
+              title={isRecording ? 'Stop recording' : 'Start recording'}
+            >
+              {isRecording ? <><BsStopCircle className="me-1" /> REC</> : <BsRecordCircle />}
+            </Button>
+          )}
+          {isPlayback ? (
+            <Button variant="outline-warning" size="sm" onClick={handleStopPlayback}>
+              Stop Playback
+            </Button>
+          ) : (
+            <Button variant="outline-danger" size="sm" onClick={handleRemove}>
+              <BsTrash />
+            </Button>
+          )}
         </div>
 
         {/* MJPEG stream */}

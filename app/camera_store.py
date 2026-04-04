@@ -45,6 +45,7 @@ PIPELINE_FIELDS = {
     "detector_backend", "yolo_model", "yolo_confidence", "yolo_person_only",
     "openvino_model", "openvino_device", "openvino_confidence",
     "max_fps", "motion_detection_enabled", "motion_threshold", "motion_min_area_percent",
+    "recording_id", "loop_playback", "playback_fps",
 }
 
 

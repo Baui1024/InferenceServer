@@ -7,10 +7,20 @@ import Sidebar from './components/Sidebar';
 import CameraGrid from './components/CameraGrid';
 import CameraView from './components/CameraView';
 import AddCameraModal from './components/AddCameraModal';
+import RecordingsPanel from './components/RecordingsPanel';
+
+type View = 'cameras' | 'recordings';
 
 function AppContent() {
   const { selectedId } = useCameras();
   const [showAdd, setShowAdd] = useState(false);
+  const [view, setView] = useState<View>('cameras');
+
+  const mainContent = () => {
+    if (selectedId) return <CameraView />;
+    if (view === 'recordings') return <RecordingsPanel />;
+    return <CameraGrid />;
+  };
 
   return (
     <div className="d-flex flex-column vh-100" data-bs-theme="dark">
@@ -25,9 +35,13 @@ function AppContent() {
       </Navbar>
 
       <div className="d-flex flex-grow-1 overflow-hidden">
-        <Sidebar onAddClick={() => setShowAdd(true)} />
+        <Sidebar
+          onAddClick={() => setShowAdd(true)}
+          view={view}
+          onViewChange={setView}
+        />
         <div className="flex-grow-1 overflow-hidden">
-          {selectedId ? <CameraView /> : <CameraGrid />}
+          {mainContent()}
         </div>
       </div>
 

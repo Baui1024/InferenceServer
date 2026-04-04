@@ -9,8 +9,10 @@ import cv2
 import numpy as np
 from loguru import logger
 
+import app.config as config
 from app.motion_detector import MotionDetector
 from app.inputs.base import InputReceiver
+from app.recorder import VideoRecorder
 
 
 # ---------------------------------------------------------------------------
@@ -58,6 +60,14 @@ def create_input_for(cfg: dict, on_frame) -> InputReceiver:
             ca_cert=cfg.get("ca_cert"),
             client_cert=cfg.get("client_cert"),
             client_key=cfg.get("client_key"),
+        )
+    elif cam_type == "recording":
+        from app.inputs.recording_input import RecordingInput
+        return RecordingInput(
+            on_frame=on_frame,
+            recording_id=cfg["recording_id"],
+            playback_fps=cfg.get("playback_fps", 0),
+            loop_playback=cfg.get("loop_playback", False),
         )
     else:
         raise ValueError(f"Unknown camera type: {cam_type!r}")
@@ -123,6 +133,9 @@ class CameraPipeline:
         self._min_interval = 1.0 / self._max_fps if self._max_fps > 0 else 0
         self._last_process_time = 0.0
 
+        # Recording (pre-detection raw frames)
+        self._recorder: Optional[VideoRecorder] = None
+
     # -- Lifecycle --
 
     async def start(self) -> None:
@@ -150,6 +163,9 @@ class CameraPipeline:
     async def stop(self) -> None:
         """Stop the receiver and release resources."""
         self._status = "stopped"
+        if self._recorder and self._recorder.is_recording:
+            self._recorder.stop()
+            self._recorder = None
         if self._receiver:
             try:
                 await self._receiver.stop()
@@ -160,13 +176,55 @@ class CameraPipeline:
         self._motion_detector = None
         logger.info(f"[{self.cfg.get('name', self.camera_id[:8])}] Pipeline stopped")
 
+    # -- Recording controls --
+
+    def start_recording(self) -> Optional[str]:
+        """Start recording raw frames. Returns recording id or None."""
+        if not config.RECORDING_ENABLED:
+            return None
+        if self._recorder and self._recorder.is_recording:
+            return self._recorder.recording_id
+        self._recorder = VideoRecorder(
+            camera_id=self.camera_id,
+            camera_name=self.cfg.get("name", self.camera_id[:8]),
+            fps=self._max_fps or 15.0,
+        )
+        return self._recorder.start()
+
+    def stop_recording(self) -> Optional[dict]:
+        """Stop recording. Returns recording metadata or None."""
+        if self._recorder and self._recorder.is_recording:
+            meta = self._recorder.stop()
+            self._recorder = None
+            return meta
+        return None
+
+    @property
+    def is_recording(self) -> bool:
+        return self._recorder is not None and self._recorder.is_recording
+
     # -- Frame processing (called from receiver thread) --
 
-    def _process_frame(self, jpeg_data: bytes) -> None:
-        """Callback from input receiver — runs in receiver's thread."""
-        # JPEG validation
-        if len(jpeg_data) < 4 or jpeg_data[:2] != b"\xff\xd8" or jpeg_data[-2:] != b"\xff\xd9":
-            return
+    def _process_frame(self, frame_data) -> None:
+        """Callback from input receiver — runs in receiver's thread.
+        
+        Args:
+            frame_data: Either raw JPEG bytes or a decoded numpy array (BGR).
+        """
+        # Handle both JPEG bytes and pre-decoded numpy arrays
+        if isinstance(frame_data, np.ndarray):
+            # Already decoded (e.g., from H264 RPi receiver)
+            frame = frame_data
+        else:
+            # JPEG bytes — validate and decode
+            jpeg_data = frame_data
+            if len(jpeg_data) < 4 or jpeg_data[:2] != b"\xff\xd8" or jpeg_data[-2:] != b"\xff\xd9":
+                return
+
+            arr = np.frombuffer(jpeg_data, dtype=np.uint8)
+            frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+            if frame is None:
+                return
 
         # Frame rate limiter
         now = time.time()
@@ -174,10 +232,9 @@ class CameraPipeline:
             return
         self._last_process_time = now
 
-        arr = np.frombuffer(jpeg_data, dtype=np.uint8)
-        frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-        if frame is None:
-            return
+        # Record raw frame (pre-detection)
+        if self._recorder and self._recorder.is_recording:
+            self._recorder.write_frame(frame)
 
         # Motion detection skip
         if self._motion_detector and not self._motion_detector.has_motion(frame):

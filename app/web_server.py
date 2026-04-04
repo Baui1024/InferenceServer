@@ -7,12 +7,14 @@ from typing import Optional
 from aiohttp import web
 from loguru import logger
 
+from app.config import RECORDINGS_DIR
 from app.camera_store import CameraStore
 from app.pipeline_manager import PipelineManager
 from app.ws_api import WebSocketAPI
 
 _DIST_DIR = Path(__file__).parent / "static" / "dist"
 _BOUNDARY = b"--frame\r\n"
+_RECORDINGS_PATH = Path(RECORDINGS_DIR)
 
 
 class WebStreamServer:
@@ -50,22 +52,37 @@ class WebStreamServer:
 
         last_jpeg = None
         try:
-            while True:
+            while not response.task.done():
                 jpeg = self.manager.get_latest_jpeg(camera_id)
                 if jpeg is not None and jpeg is not last_jpeg:
                     last_jpeg = jpeg
-                    await response.write(
-                        _BOUNDARY
-                        + b"Content-Type: image/jpeg\r\n"
-                        + f"Content-Length: {len(jpeg)}\r\n\r\n".encode()
-                        + jpeg
-                        + b"\r\n"
-                    )
-                await asyncio.sleep(0.033)  # ~30 fps max poll rate
+                    try:
+                        await response.write(
+                            _BOUNDARY
+                            + b"Content-Type: image/jpeg\r\n"
+                            + f"Content-Length: {len(jpeg)}\r\n\r\n".encode()
+                            + jpeg
+                            + b"\r\n"
+                        )
+                    except (ConnectionResetError, ConnectionAbortedError, BrokenPipeError):
+                        break
+                await asyncio.sleep(0.033)
         except (ConnectionResetError, ConnectionAbortedError, asyncio.CancelledError):
             pass
 
         return response
+
+    async def _handle_snapshot(self, request: web.Request) -> web.Response:
+        """Single JPEG snapshot for a camera: GET /snapshot/{camera_id}"""
+        camera_id = request.match_info["camera_id"]
+        jpeg = self.manager.get_latest_jpeg(camera_id)
+        if jpeg is None:
+            return web.Response(status=204)
+        return web.Response(
+            body=jpeg,
+            content_type="image/jpeg",
+            headers={"Cache-Control": "no-cache"},
+        )
 
     async def _handle_spa_fallback(self, request: web.Request) -> web.Response:
         """Serve index.html for all non-API/non-asset routes (SPA routing)."""
@@ -73,6 +90,25 @@ class WebStreamServer:
         if index.exists():
             return web.FileResponse(index)
         return web.Response(text="Frontend not built. Run: cd frontend && npm run build", status=503)
+
+    async def _handle_recording_download(self, request: web.Request) -> web.Response:
+        """Serve a recording MP4 file for download: GET /recordings/{filename}"""
+        filename = request.match_info["filename"]
+        # Sanitize: only allow alphanumeric, dash, underscore, dot
+        if not all(c.isalnum() or c in "-_." for c in filename):
+            return web.Response(text="Invalid filename", status=400)
+        filepath = _RECORDINGS_PATH / filename
+        if not filepath.exists() or not filepath.suffix == ".mp4":
+            return web.Response(text="Not found", status=404)
+        # Ensure path doesn't escape recordings directory
+        try:
+            filepath.resolve().relative_to(_RECORDINGS_PATH.resolve())
+        except ValueError:
+            return web.Response(text="Forbidden", status=403)
+        return web.FileResponse(
+            filepath,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
     # -- Lifecycle --
 
@@ -84,6 +120,12 @@ class WebStreamServer:
 
         # Per-camera MJPEG stream
         app.router.add_get("/stream/{camera_id}", self._handle_stream)
+
+        # Single JPEG snapshot (used by grid thumbnails)
+        app.router.add_get("/snapshot/{camera_id}", self._handle_snapshot)
+
+        # Recording downloads
+        app.router.add_get("/recordings/{filename}", self._handle_recording_download)
 
         # React SPA static assets
         if _DIST_DIR.exists():

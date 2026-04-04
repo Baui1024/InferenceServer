@@ -16,6 +16,7 @@ build/
 
 # Data
 cameras.json
+recordings/
 
 # Node / Frontend
 frontend/node_modules/
@@ -35,6 +36,7 @@ Thumbs.db
 
 # Logs
 *.log
+
 
 # Environment
 .env

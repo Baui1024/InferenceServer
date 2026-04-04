@@ -1,6 +1,60 @@
+import { useEffect, useRef, useState } from 'react';
 import { Card, Col, Row, Badge } from 'react-bootstrap';
-import { BsCameraVideo, BsCpu } from 'react-icons/bs';
+import { BsCameraVideo, BsCpu, BsCameraReels } from 'react-icons/bs';
 import { useCameras } from '../context/CameraContext';
+import type { Camera } from '../types/camera';
+
+/** Thumbnail that polls /snapshot/ every 2s instead of opening a persistent MJPEG stream. */
+function Thumbnail({ cam }: { cam: Camera }) {
+  const [src, setSrc] = useState<string | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval>>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const load = () => {
+      if (cam.stats?.status !== 'running') return;
+      fetch(`/snapshot/${cam.id}`)
+        .then(r => {
+          if (!r.ok || r.status === 204) return null;
+          return r.blob();
+        })
+        .then(blob => {
+          if (blob && mountedRef.current) {
+            const url = URL.createObjectURL(blob);
+            setSrc(prev => {
+              if (prev) URL.revokeObjectURL(prev);
+              return url;
+            });
+          }
+        })
+        .catch(() => {});
+    };
+    load();
+    timerRef.current = setInterval(load, 2000);
+    return () => {
+      mountedRef.current = false;
+      if (timerRef.current) clearInterval(timerRef.current);
+      setSrc(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
+    };
+  }, [cam.id, cam.stats?.status]);
+
+  if (cam.stats?.status !== 'running' || !src) {
+    return (
+      <span className="text-muted small">
+        {cam.stats?.status === 'error' ? 'Connection error' : 'Not streaming'}
+      </span>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={cam.name}
+      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+    />
+  );
+}
 
 export default function CameraGrid() {
   const { cameras, selectCamera } = useCameras();
@@ -33,21 +87,11 @@ export default function CameraGrid() {
                 className="bg-black d-flex align-items-center justify-content-center"
                 style={{ height: 180, overflow: 'hidden' }}
               >
-                {cam.stats?.status === 'running' ? (
-                  <img
-                    src={`/stream/${cam.id}`}
-                    alt={cam.name}
-                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                  />
-                ) : (
-                  <span className="text-muted small">
-                    {cam.stats?.status === 'error' ? 'Connection error' : 'Not streaming'}
-                  </span>
-                )}
+                <Thumbnail cam={cam} />
               </div>
               <Card.Body className="py-2 px-3">
                 <div className="d-flex align-items-center gap-2">
-                  {cam.type === 'esp32' ? <BsCpu /> : <BsCameraVideo />}
+                  {cam.type === 'esp32' ? <BsCpu /> : cam.type === 'recording' ? <BsCameraReels /> : <BsCameraVideo />}
                   <span className="text-truncate fw-bold flex-grow-1">{cam.name}</span>
                   <Badge bg={cam.stats?.status === 'running' ? 'success' : 'secondary'} pill>
                     {cam.stats?.status ?? 'unknown'}

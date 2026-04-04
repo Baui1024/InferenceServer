@@ -1,6 +1,6 @@
-"""Raspberry Pi input — TLS-encrypted TCP, length-prefixed JPEG frames.
+"""Raspberry Pi input — TLS-encrypted TCP, length-prefixed H264 frames.
 
-Protocol: same as ESP32 ([4-byte BE length][JPEG]) but wrapped in TLS.
+Protocol: [4-byte BE length][H264 NAL unit(s)] wrapped in TLS.
 
 The Pi runs a TLS *server* (PiCamStream); this receiver connects as a
 TLS *client*, verifying the server certificate and optionally presenting
@@ -13,17 +13,19 @@ import struct
 from pathlib import Path
 from typing import Callable, Optional
 
+import av
+import numpy as np
 from loguru import logger
 
 from .base import InputReceiver
 
 
 class RPiTLSReceiver(InputReceiver):
-    """Connects to a Raspberry Pi camera TLS server and receives JPEG frames."""
+    """Connects to a Raspberry Pi camera TLS server and receives H264 frames."""
 
     def __init__(
         self,
-        on_frame: Callable[[bytes], None],
+        on_frame: Callable[[np.ndarray], None],
         host: str = "192.168.178.100",
         port: int = 8081,
         reconnect_delay: float = 2.0,
@@ -36,7 +38,7 @@ class RPiTLSReceiver(InputReceiver):
     ):
         """
         Args:
-            on_frame: Callback receiving raw JPEG bytes per frame.
+            on_frame: Callback receiving decoded BGR numpy array per frame.
             host: Pi IP address.
             port: Pi stream port.
             reconnect_delay: Seconds between reconnect attempts.
@@ -60,6 +62,7 @@ class RPiTLSReceiver(InputReceiver):
         self._task: Optional[asyncio.Task] = None
         self._reader: Optional[asyncio.StreamReader] = None
         self._writer: Optional[asyncio.StreamWriter] = None
+        self._codec: Optional[av.CodecContext] = None
 
     async def start(self) -> None:
         self._running = True
@@ -129,6 +132,10 @@ class RPiTLSReceiver(InputReceiver):
                 )
                 logger.info(f"{mode} session established with {self.host}:{self.port}")
 
+                # Create H264 codec context for this connection
+                self._codec = av.CodecContext.create('h264', 'r')
+                logger.info("H264 codec context initialized")
+
                 frame_count = 0
                 while self._running:
                     header = await self._reader.readexactly(4)
@@ -138,12 +145,17 @@ class RPiTLSReceiver(InputReceiver):
                         logger.error(f"Invalid frame length: {frame_len}")
                         break
 
-                    jpeg_data = await self._reader.readexactly(frame_len)
-                    frame_count += 1
-                    if frame_count <= 5 or frame_count % 100 == 0:
-                        logger.info(f"RPi frame #{frame_count}: {len(jpeg_data)} bytes")
+                    h264_data = await self._reader.readexactly(frame_len)
 
-                    self.on_frame(jpeg_data)
+                    # Parse and decode H264 data
+                    packets = self._codec.parse(h264_data)
+                    for packet in packets:
+                        for frame in self._codec.decode(packet):
+                            numpy_frame = frame.to_ndarray(format='bgr24')
+                            frame_count += 1
+                            if frame_count <= 5 or frame_count % 100 == 0:
+                                logger.info(f"RPi frame #{frame_count}: {numpy_frame.shape}")
+                            self.on_frame(numpy_frame)
 
             except asyncio.TimeoutError:
                 logger.warning(f"TLS connection timeout to {self.host}:{self.port}")
@@ -155,9 +167,12 @@ class RPiTLSReceiver(InputReceiver):
                 logger.warning(f"Connection refused by {self.host}:{self.port}")
             except OSError as e:
                 logger.warning(f"Connection error: {e}")
+            except av.error.InvalidDataError as e:
+                logger.error(f"H264 decode error: {e}")
             except Exception as e:
                 logger.error(f"RPi TLS error: {type(e).__name__}: {e}")
             finally:
+                self._codec = None
                 if self._writer:
                     try:
                         self._writer.close()

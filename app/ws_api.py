@@ -8,9 +8,11 @@ import aiohttp
 from aiohttp import web
 from loguru import logger
 
+import app.config as config
 from app.camera_store import CameraStore
 from app.pipeline_manager import PipelineManager
 from app.camera_hw_proxy import HWProxyManager
+from app.recorder import list_recordings, get_recording, delete_recording
 
 
 class WebSocketAPI:
@@ -47,6 +49,8 @@ class WebSocketAPI:
         self._clients.add(ws)
         logger.info(f"WS client connected ({len(self._clients)} total)")
 
+        await self._send_initial_state(ws)
+
         try:
             async for msg in ws:
                 if msg.type == aiohttp.WSMsgType.TEXT:
@@ -58,6 +62,12 @@ class WebSocketAPI:
             logger.info(f"WS client disconnected ({len(self._clients)} total)")
 
         return ws
+
+    async def _send_initial_state(self, ws: web.WebSocketResponse) -> None:
+        """Send server config and camera list to a newly connected client."""
+        await self._send(ws, "server_config", {
+            "recording_enabled": config.RECORDING_ENABLED,
+        })
 
     # -- Message dispatch --
 
@@ -80,6 +90,12 @@ class WebSocketAPI:
             "camera_hw_get": self._handle_hw_get,
             "camera_hw_set": self._handle_hw_set,
             "camera_hw_reset": self._handle_hw_reset,
+            # Recording
+            "start_recording": self._handle_start_recording,
+            "stop_recording": self._handle_stop_recording,
+            "list_recordings": self._handle_list_recordings,
+            "delete_recording": self._handle_delete_recording,
+            "play_recording": self._handle_play_recording,
         }.get(msg_type)
 
         if handler:
@@ -204,7 +220,89 @@ class WebSocketAPI:
             await asyncio.sleep(2)
             stats = self.manager.get_all_stats()
             if stats and self._clients:
+                # Attach recording state
+                if config.RECORDING_ENABLED:
+                    for s in stats:
+                        p = self.manager.get_pipeline(s["id"])
+                        s["recording"] = p.is_recording if p else False
                 await self._broadcast("camera_stats", stats)
+
+    # -- Recording handlers --
+
+    async def _handle_start_recording(self, ws, data):
+        if not config.RECORDING_ENABLED:
+            await self._send(ws, "error", {"message": "Recording is not enabled on this server"})
+            return
+        camera_id = data.get("id", "")
+        pipeline = self.manager.get_pipeline(camera_id)
+        if not pipeline:
+            await self._send(ws, "error", {"message": "Camera pipeline not running"})
+            return
+        rec_id = pipeline.start_recording()
+        await self._broadcast("recording_started", {"camera_id": camera_id, "recording_id": rec_id})
+
+    async def _handle_stop_recording(self, ws, data):
+        camera_id = data.get("id", "")
+        pipeline = self.manager.get_pipeline(camera_id)
+        if not pipeline:
+            await self._send(ws, "error", {"message": "Camera pipeline not running"})
+            return
+        meta = pipeline.stop_recording()
+        if meta:
+            await self._broadcast("recording_stopped", {"camera_id": camera_id, "recording": meta})
+        else:
+            await self._send(ws, "error", {"message": "Camera is not recording"})
+
+    async def _handle_list_recordings(self, ws, data):
+        recordings = list_recordings()
+        await self._send(ws, "recordings", recordings)
+
+    async def _handle_delete_recording(self, ws, data):
+        rec_id = data.get("id", "")
+        if not rec_id:
+            await self._send(ws, "error", {"message": "Missing recording id"})
+            return
+        deleted = delete_recording(rec_id)
+        if deleted:
+            await self._broadcast("recordings", list_recordings())
+        else:
+            await self._send(ws, "error", {"message": "Recording not found"})
+
+    async def _handle_play_recording(self, ws, data):
+        """Create a playback camera from a recording, stored like any camera."""
+        rec_id = data.get("recording_id", "")
+        rec = get_recording(rec_id)
+        if not rec:
+            await self._send(ws, "error", {"message": "Recording not found"})
+            return
+
+        # Check if we already have a playback camera for this recording
+        existing = [c for c in self.store.all() if c.get("recording_id") == rec_id]
+        if existing:
+            # Just restart its pipeline and select it
+            cam = existing[0]
+            await self.manager.start_camera(cam)
+            await self._broadcast("cameras", self.store.all())
+            await self._broadcast("playback_started", {"camera_id": cam["id"]})
+            return
+
+        # Add as a real camera in the store so update_camera works
+        camera = self.store.add({
+            "name": f"\u25b6 {rec.get('camera_name', rec_id)}",
+            "type": "recording",
+            "recording_id": rec_id,
+            "host": "",
+            "port": 0,
+            "enabled": True,
+            "playback_fps": data.get("playback_fps", 0),
+            "loop_playback": True,
+            "max_fps": 30,
+            "motion_detection_enabled": False,
+        })
+
+        await self.manager.start_camera(camera)
+        await self._broadcast("cameras", self.store.all())
+        await self._broadcast("playback_started", {"camera_id": camera["id"]})
 
     # -- Messaging helpers --
 
