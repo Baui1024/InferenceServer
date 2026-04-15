@@ -60,6 +60,7 @@ def create_input_for(cfg: dict, on_frame) -> InputReceiver:
             ca_cert=cfg.get("ca_cert"),
             client_cert=cfg.get("client_cert"),
             client_key=cfg.get("client_key"),
+            encode_format=cfg.get("encode_format", "mjpeg"),
         )
     elif cam_type == "recording":
         from app.inputs.recording_input import RecordingInput
