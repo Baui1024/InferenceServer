@@ -43,14 +43,7 @@ def create_detector_for(cfg: dict):
 def create_input_for(cfg: dict, on_frame) -> InputReceiver:
     """Instantiate an input receiver based on a camera config dict."""
     cam_type = cfg.get("type", "rpi")
-    if cam_type == "esp32":
-        from app.inputs.esp32_tcp import ESP32TCPReceiver
-        return ESP32TCPReceiver(
-            on_frame=on_frame,
-            host=cfg["host"],
-            port=cfg["port"],
-        )
-    elif cam_type == "rpi":
+    if cam_type == "rpi":
         from app.inputs.rpi_tls import RPiTLSReceiver
         return RPiTLSReceiver(
             on_frame=on_frame,
@@ -60,7 +53,6 @@ def create_input_for(cfg: dict, on_frame) -> InputReceiver:
             ca_cert=cfg.get("ca_cert"),
             client_cert=cfg.get("client_cert"),
             client_key=cfg.get("client_key"),
-            encode_format=cfg.get("encode_format", "mjpeg"),
         )
     elif cam_type == "recording":
         from app.inputs.recording_input import RecordingInput
@@ -214,7 +206,6 @@ class CameraPipeline:
         """
         # Handle both JPEG bytes and pre-decoded numpy arrays
         if isinstance(frame_data, np.ndarray):
-            # Already decoded (e.g., from H264 RPi receiver)
             frame = frame_data
         else:
             # JPEG bytes — validate and decode

@@ -1,6 +1,6 @@
 """Multi-Camera Inference Server.
 
-Manages multiple camera streams (ESP32 / Raspberry Pi), runs per-camera
+Manages multiple Raspberry Pi camera streams, runs per-camera
 object detection pipelines, and serves a React dashboard + MJPEG streams.
 """
 

@@ -1,9 +1,9 @@
-"""Raspberry Pi input — TLS-encrypted TCP, length-prefixed H264/MJPEG frames.
+"""Raspberry Pi input — TCP (optionally TLS-encrypted), length-prefixed MJPEG frames.
 
-Protocol: [4-byte BE length][H264 NAL unit(s) or JPEG data] wrapped in TLS.
+Protocol: [4-byte BE length][JPEG data] optionally wrapped in TLS.
 
-The Pi runs a TLS *server* (PiCamStream); this receiver connects as a
-TLS *client*, verifying the server certificate and optionally presenting
+The Pi runs a TCP server (PiCamStream); this receiver connects as a
+client, optionally verifying the server certificate and presenting
 a client certificate (mTLS).
 """
 
@@ -13,7 +13,6 @@ import struct
 from pathlib import Path
 from typing import Callable, Optional
 
-import av
 import cv2
 import numpy as np
 from loguru import logger
@@ -22,7 +21,7 @@ from .base import InputReceiver
 
 
 class RPiTLSReceiver(InputReceiver):
-    """Connects to a Raspberry Pi camera TLS server and receives H264/MJPEG frames."""
+    """Connects to a Raspberry Pi camera TCP/TLS server and receives MJPEG frames."""
 
     def __init__(
         self,
@@ -36,8 +35,6 @@ class RPiTLSReceiver(InputReceiver):
         client_cert: Optional[str] = None,
         client_key: Optional[str] = None,
         verify_hostname: bool = False,
-        # Encoding format
-        encode_format: str = "mjpeg",  # "h264" or "mjpeg"
     ):
         """
         Args:
@@ -51,7 +48,6 @@ class RPiTLSReceiver(InputReceiver):
             client_cert: Path to client certificate PEM (for mTLS).
             client_key: Path to client private key PEM (for mTLS).
             verify_hostname: Whether to check the cert CN against *host*.
-            encode_format: Stream encoding - "h264" or "mjpeg".
         """
         super().__init__(on_frame)
         self.host = host
@@ -62,18 +58,16 @@ class RPiTLSReceiver(InputReceiver):
         self.client_cert = client_cert
         self.client_key = client_key
         self.verify_hostname = verify_hostname
-        self.encode_format = encode_format.lower()
         self._running = False
         self._task: Optional[asyncio.Task] = None
         self._reader: Optional[asyncio.StreamReader] = None
         self._writer: Optional[asyncio.StreamWriter] = None
-        self._codec: Optional[av.CodecContext] = None
 
     async def start(self) -> None:
         self._running = True
         self._task = asyncio.create_task(self._receive_loop())
         mode = "TLS" if self.use_tls else "plain TCP"
-        logger.info(f"RPiTLSReceiver connecting to {self.host}:{self.port} ({mode}, {self.encode_format})")
+        logger.info(f"RPiTLSReceiver connecting to {self.host}:{self.port} ({mode})")
 
     async def stop(self) -> None:
         self._running = False
@@ -137,17 +131,7 @@ class RPiTLSReceiver(InputReceiver):
                 )
                 logger.info(f"{mode} session established with {self.host}:{self.port}")
 
-                # Create codec context for H.264 (not needed for MJPEG)
-                if self.encode_format == "h264":
-                    self._codec = av.CodecContext.create('h264', 'r')
-                    logger.info("H264 codec context initialized")
-                    waiting_for_keyframe = True  # Wait for IDR before decoding
-                else:
-                    logger.info("MJPEG mode - using cv2.imdecode")
-                    waiting_for_keyframe = False
-
                 frame_count = 0
-                decode_errors = 0
                 while self._running:
                     header = await self._reader.readexactly(4)
                     frame_len = struct.unpack(">I", header)[0]
@@ -158,53 +142,17 @@ class RPiTLSReceiver(InputReceiver):
 
                     frame_data = await self._reader.readexactly(frame_len)
 
-                    # Decode based on format
-                    if self.encode_format == "h264":
-                        # Check for keyframe (IDR NAL unit)
-                        is_keyframe = self._is_h264_keyframe(frame_data)
-                        
-                        if waiting_for_keyframe:
-                            if is_keyframe:
-                                logger.info(f"H264: Got keyframe ({frame_len} bytes), starting decode")
-                                waiting_for_keyframe = False
-                            else:
-                                # Skip non-keyframes until we sync
-                                continue
-                        
-                        try:
-                            # Parse and decode H264 data
-                            packets = self._codec.parse(frame_data)
-                            for packet in packets:
-                                for frame in self._codec.decode(packet):
-                                    numpy_frame = frame.to_ndarray(format='bgr24')
-                                    frame_count += 1
-                                    decode_errors = 0  # Reset error counter on success
-                                    if frame_count <= 5 or frame_count % 100 == 0:
-                                        logger.info(f"RPi H264 frame #{frame_count}: {numpy_frame.shape}")
-                                    self.on_frame(numpy_frame)
-                        except av.error.InvalidDataError as e:
-                            decode_errors += 1
-                            if decode_errors <= 3:
-                                logger.warning(f"H264 decode error ({decode_errors}): {e}")
-                            if decode_errors > 10:
-                                # Too many errors, reset codec and wait for keyframe
-                                logger.warning("H264: Too many errors, resetting codec")
-                                self._codec = av.CodecContext.create('h264', 'r')
-                                waiting_for_keyframe = True
-                                decode_errors = 0
+                    numpy_frame = cv2.imdecode(
+                        np.frombuffer(frame_data, dtype=np.uint8),
+                        cv2.IMREAD_COLOR
+                    )
+                    if numpy_frame is not None:
+                        frame_count += 1
+                        if frame_count <= 5 or frame_count % 100 == 0:
+                            logger.info(f"RPi frame #{frame_count}: {numpy_frame.shape}")
+                        self.on_frame(numpy_frame)
                     else:
-                        # Decode MJPEG (JPEG) data
-                        numpy_frame = cv2.imdecode(
-                            np.frombuffer(frame_data, dtype=np.uint8),
-                            cv2.IMREAD_COLOR
-                        )
-                        if numpy_frame is not None:
-                            frame_count += 1
-                            if frame_count <= 5 or frame_count % 100 == 0:
-                                logger.info(f"RPi MJPEG frame #{frame_count}: {numpy_frame.shape}")
-                            self.on_frame(numpy_frame)
-                        else:
-                            logger.warning(f"Failed to decode JPEG frame ({frame_len} bytes)")
+                        logger.warning(f"Failed to decode JPEG frame ({frame_len} bytes)")
 
             except asyncio.TimeoutError:
                 logger.warning(f"TLS connection timeout to {self.host}:{self.port}")
@@ -219,7 +167,6 @@ class RPiTLSReceiver(InputReceiver):
             except Exception as e:
                 logger.error(f"RPi TLS error: {type(e).__name__}: {e}")
             finally:
-                self._codec = None
                 if self._writer:
                     try:
                         self._writer.close()
@@ -231,25 +178,3 @@ class RPiTLSReceiver(InputReceiver):
             if self._running:
                 logger.info(f"Reconnecting in {self.reconnect_delay}s...")
                 await asyncio.sleep(self.reconnect_delay)
-
-    @staticmethod
-    def _is_h264_keyframe(data: bytes) -> bool:
-        """Check if H.264 NAL unit is a keyframe (IDR slice or SPS)."""
-        # Look for NAL start codes and check NAL type
-        # NAL type 5 = IDR (keyframe), type 7 = SPS (also indicates keyframe AU)
-        i = 0
-        while i < len(data) - 4:
-            if data[i:i+3] == b'\x00\x00\x01':
-                nal_type = data[i+3] & 0x1F
-                if nal_type in (5, 7):  # IDR or SPS
-                    return True
-                i += 3
-            elif data[i:i+4] == b'\x00\x00\x00\x01':
-                if i + 4 < len(data):
-                    nal_type = data[i+4] & 0x1F
-                    if nal_type in (5, 7):  # IDR or SPS
-                        return True
-                i += 4
-            else:
-                i += 1
-        return False

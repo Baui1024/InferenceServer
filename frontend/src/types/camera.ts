@@ -1,7 +1,7 @@
 export interface Camera {
   id: string;
   name: string;
-  type: 'esp32' | 'rpi' | 'recording';
+  type: 'rpi' | 'recording';
   host: string;
   port: number;
   enabled: boolean;

@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { Modal, Button, Form, Row, Col, Card } from 'react-bootstrap';
-import { BsCpu, BsCameraVideo } from 'react-icons/bs';
+import { Modal, Button, Form, Row, Col } from 'react-bootstrap';
 import { useCameras } from '../context/CameraContext';
 
 interface Props {
@@ -11,7 +10,6 @@ interface Props {
 export default function AddCameraModal({ show, onHide }: Props) {
   const { send } = useCameras();
   const [step, setStep] = useState(0);
-  const [type, setType] = useState<'esp32' | 'rpi'>('rpi');
   const [name, setName] = useState('');
   const [host, setHost] = useState('');
   const [port, setPort] = useState(8081);
@@ -21,7 +19,6 @@ export default function AddCameraModal({ show, onHide }: Props) {
 
   const reset = () => {
     setStep(0);
-    setType('rpi');
     setName('');
     setHost('');
     setPort(8081);
@@ -34,8 +31,8 @@ export default function AddCameraModal({ show, onHide }: Props) {
 
   const handleSubmit = () => {
     send('add_camera', {
-      name: name || `${type.toUpperCase()} Camera`,
-      type,
+      name: name || 'RPi Camera',
+      type: 'rpi',
       host,
       port,
       detector_backend: backend,
@@ -52,54 +49,21 @@ export default function AddCameraModal({ show, onHide }: Props) {
     <Modal show={show} onHide={handleClose} centered data-bs-theme="dark">
       <Modal.Header closeButton className="bg-dark text-light border-secondary">
         <Modal.Title>
-          {step === 0 && 'Select Camera Type'}
-          {step === 1 && 'Connection Details'}
-          {step === 2 && 'Detection Settings'}
+          {step === 0 && 'Connection Details'}
+          {step === 1 && 'Detection Settings'}
         </Modal.Title>
       </Modal.Header>
       <Modal.Body className="bg-dark text-light">
 
-        {/* Step 0: Type selection */}
+        {/* Step 0: Connection */}
         {step === 0 && (
-          <Row className="g-3">
-            <Col xs={6}>
-              <Card
-                className={`text-center p-3 cursor-pointer ${type === 'rpi' ? 'border-success' : 'border-secondary'}`}
-                style={{ cursor: 'pointer' }}
-                onClick={() => setType('rpi')}
-                bg="dark"
-                text="light"
-              >
-                <BsCameraVideo size={40} className="mx-auto mb-2" />
-                <div className="fw-bold">Raspberry Pi</div>
-                <small className="text-muted">TCP/TLS, HW controls</small>
-              </Card>
-            </Col>
-            <Col xs={6}>
-              <Card
-                className={`text-center p-3 ${type === 'esp32' ? 'border-success' : 'border-secondary'}`}
-                style={{ cursor: 'pointer' }}
-                onClick={() => setType('esp32')}
-                bg="dark"
-                text="light"
-              >
-                <BsCpu size={40} className="mx-auto mb-2" />
-                <div className="fw-bold">ESP32</div>
-                <small className="text-muted">Plain TCP</small>
-              </Card>
-            </Col>
-          </Row>
-        )}
-
-        {/* Step 1: Connection */}
-        {step === 1 && (
           <Form>
             <Form.Group className="mb-3">
               <Form.Label>Camera Name</Form.Label>
               <Form.Control
                 value={name}
                 onChange={e => setName(e.target.value)}
-                placeholder={`${type === 'rpi' ? 'Raspberry Pi' : 'ESP32'} Camera`}
+                placeholder="Raspberry Pi Camera"
               />
             </Form.Group>
             <Row>
@@ -126,23 +90,21 @@ export default function AddCameraModal({ show, onHide }: Props) {
                 </Form.Group>
               </Col>
             </Row>
-            {type === 'rpi' && (
-              <Form.Group className="mb-3">
-                <Form.Label>Camera WS Port</Form.Label>
-                <Form.Control
-                  type="number"
-                  value={cameraWsPort}
-                  onChange={e => setCameraWsPort(Number(e.target.value))}
-                  min={1} max={65535}
-                />
-                <Form.Text className="text-muted">Port for camera hardware settings (exposure, IR, etc.)</Form.Text>
-              </Form.Group>
-            )}
+            <Form.Group className="mb-3">
+              <Form.Label>Camera WS Port</Form.Label>
+              <Form.Control
+                type="number"
+                value={cameraWsPort}
+                onChange={e => setCameraWsPort(Number(e.target.value))}
+                min={1} max={65535}
+              />
+              <Form.Text className="text-muted">Port for camera hardware settings (exposure, IR, etc.)</Form.Text>
+            </Form.Group>
           </Form>
         )}
 
-        {/* Step 2: Detection */}
-        {step === 2 && (
+        {/* Step 1: Detection */}
+        {step === 1 && (
           <Form>
             <Form.Group className="mb-3">
               <Form.Label>Detector Backend</Form.Label>
@@ -166,7 +128,7 @@ export default function AddCameraModal({ show, onHide }: Props) {
       <Modal.Footer className="bg-dark border-secondary">
         {step > 0 && <Button variant="outline-light" onClick={() => setStep(s => s - 1)}>Back</Button>}
         <div className="flex-grow-1" />
-        {step < 2 ? (
+        {step < 1 ? (
           <Button variant="success" onClick={() => setStep(s => s + 1)}>Next</Button>
         ) : (
           <Button variant="success" disabled={!canSubmit} onClick={handleSubmit}>Add Camera</Button>

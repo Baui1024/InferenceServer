@@ -1,5 +1,5 @@
 import { ListGroup, Button, Nav } from 'react-bootstrap';
-import { BsCameraVideo, BsCpu, BsPlusLg, BsCameraReels, BsGrid } from 'react-icons/bs';
+import { BsCameraVideo, BsPlusLg, BsCameraReels, BsGrid } from 'react-icons/bs';
 import { useCameras } from '../context/CameraContext';
 import type { Camera } from '../types/camera';
 
@@ -79,7 +79,7 @@ export default function Sidebar({ onAddClick, view, onViewChange }: Props) {
                 backgroundColor: statusColor(cam), flexShrink: 0,
               }}
             />
-            {cam.type === 'esp32' ? <BsCpu size={14} /> : cam.type === 'recording' ? <BsCameraReels size={14} /> : <BsCameraVideo size={14} />}
+            {cam.type === 'recording' ? <BsCameraReels size={14} /> : <BsCameraVideo size={14} />}
             <span className="text-truncate flex-grow-1">{cam.name}</span>
             {cam.stats?.recording && (
               <span style={{ color: '#dc3545', fontSize: 10 }} title="Recording">&#9679;</span>

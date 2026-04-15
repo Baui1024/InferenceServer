@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Card, Col, Row, Badge } from 'react-bootstrap';
-import { BsCameraVideo, BsCpu, BsCameraReels } from 'react-icons/bs';
+import { BsCameraVideo, BsCameraReels } from 'react-icons/bs';
 import { useCameras } from '../context/CameraContext';
 import type { Camera } from '../types/camera';
 
@@ -91,7 +91,7 @@ export default function CameraGrid() {
               </div>
               <Card.Body className="py-2 px-3">
                 <div className="d-flex align-items-center gap-2">
-                  {cam.type === 'esp32' ? <BsCpu /> : cam.type === 'recording' ? <BsCameraReels /> : <BsCameraVideo />}
+                  {cam.type === 'recording' ? <BsCameraReels /> : <BsCameraVideo />}
                   <span className="text-truncate fw-bold flex-grow-1">{cam.name}</span>
                   <Badge bg={cam.stats?.status === 'running' ? 'success' : 'secondary'} pill>
                     {cam.stats?.status ?? 'unknown'}
