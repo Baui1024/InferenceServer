@@ -44,71 +44,334 @@ export default function CameraHWSettingsPanel({ camera }: Props) {
   }
 
   return (
-    <Accordion defaultActiveKey={['0', '1']} alwaysOpen flush>
-      {/* IR Processing */}
+    <Accordion defaultActiveKey={['0']} flush>
+      {/* Day/Night & Exposure */}
       <Accordion.Item eventKey="0" className="bg-dark text-light border-secondary">
-        <Accordion.Header>IR Processing</Accordion.Header>
+        <Accordion.Header>Day / Night &amp; Exposure</Accordion.Header>
         <Accordion.Body>
           <Form.Group className="mb-3">
-            <Form.Label>IR Mode</Form.Label>
+            <Form.Label>Day/Night Mode</Form.Label>
             <Form.Select
-              value={settings.ir_mode ?? 'off'}
-              onChange={e => update('ir_mode', e.target.value)}
+              value={settings.daynightmode ?? '0xff'}
+              onChange={e => update('daynightmode', e.target.value)}
             >
-              <option value="off">Off</option>
-              <option value="grayscale">Grayscale</option>
-              <option value="blue_channel">Blue Channel</option>
+              <option value="0xff">Color (Day)</option>
+              <option value="0xfe">B&W (Night/IR)</option>
+              <option value="0xfc">External Trigger</option>
             </Form.Select>
           </Form.Group>
-          <Form.Check
-            type="switch"
-            label="CLAHE Enhancement"
-            checked={settings.clahe_enabled ?? false}
-            onChange={e => update('clahe_enabled', e.target.checked)}
-          />
+          <Form.Group className="mb-3">
+            <Form.Label>IR-CUT Direction</Form.Label>
+            <Form.Select
+              value={settings.ircutdir ?? '0x00'}
+              onChange={e => update('ircutdir', e.target.value)}
+            >
+              <option value="0x00">Normal (0)</option>
+              <option value="0x01">Inverted (1)</option>
+            </Form.Select>
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label>IR Trigger Polarity</Form.Label>
+            <Form.Select
+              value={settings.irtrigger ?? '0x00'}
+              onChange={e => update('irtrigger', e.target.value)}
+            >
+              <option value="0x00">Default</option>
+              <option value="0x01">Inverted</option>
+            </Form.Select>
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label>Shutter Speed</Form.Label>
+            <Form.Select
+              value={settings.mshutter ?? '0x40'}
+              onChange={e => update('mshutter', e.target.value)}
+            >
+              <option value="0x40">Auto</option>
+              <option value="0x41">1/30s (1/25s PAL)</option>
+              <option value="0x42">1/60s (1/50s PAL)</option>
+              <option value="0x43">1/120s (1/100s PAL)</option>
+              <option value="0x44">1/240s (1/200s PAL)</option>
+              <option value="0x45">1/480s (1/400s PAL)</option>
+              <option value="0x46">1/1000s</option>
+              <option value="0x47">1/2000s</option>
+              <option value="0x48">1/5000s</option>
+              <option value="0x49">1/10000s</option>
+              <option value="0x4a">1/50000s</option>
+            </Form.Select>
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label>
+              AGC (Gain Limit):{' '}
+              <span className="font-monospace text-success">{settings.agc ?? '0x00'}</span>
+            </Form.Label>
+            <Form.Select
+              value={settings.agc ?? '0x00'}
+              onChange={e => update('agc', e.target.value)}
+            >
+              {Array.from({ length: 16 }, (_, i) => {
+                const hex = '0x' + i.toString(16).padStart(2, '0');
+                return <option key={hex} value={hex}>{hex} ({i})</option>;
+              })}
+            </Form.Select>
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label>
+              AE Speed — AGC:{' '}
+              <span className="font-monospace text-success">{settings.aespeed_agc ?? '—'}</span>
+            </Form.Label>
+            <Form.Range
+              value={parseInt(settings.aespeed_agc ?? '0x32', 16)}
+              onChange={e => update('aespeed_agc', '0x' + Number(e.target.value).toString(16).padStart(2, '0'))}
+              min={0} max={100} step={1}
+            />
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label>
+              AE Speed — Shutter:{' '}
+              <span className="font-monospace text-success">{settings.aespeed_shutter ?? '—'}</span>
+            </Form.Label>
+            <Form.Range
+              value={parseInt(settings.aespeed_shutter ?? '0x32', 16)}
+              onChange={e => update('aespeed_shutter', '0x' + Number(e.target.value).toString(16).padStart(2, '0'))}
+              min={0} max={100} step={1}
+            />
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label>Low Light Mode</Form.Label>
+            <Form.Select
+              value={settings.lowlight ?? '0x00'}
+              onChange={e => update('lowlight', e.target.value)}
+            >
+              <option value="0x00">Off (fixed frame rate)</option>
+              <option value="0x01">1/2 frame rate</option>
+              <option value="0x03">1/4 frame rate</option>
+              <option value="0x05">1/6 frame rate</option>
+              <option value="0x07">1/8 frame rate</option>
+              <option value="0x09">1/10 frame rate</option>
+              <option value="0x0b">1/15 frame rate</option>
+              <option value="0x0d">1/20 frame rate</option>
+              <option value="0x0f">1/25 frame rate</option>
+              <option value="0x11">1/30 frame rate</option>
+            </Form.Select>
+          </Form.Group>
         </Accordion.Body>
       </Accordion.Item>
 
-      {/* Exposure */}
+      {/* Image Processing */}
       <Accordion.Item eventKey="1" className="bg-dark text-light border-secondary">
-        <Accordion.Header>Exposure</Accordion.Header>
+        <Accordion.Header>Image Processing</Accordion.Header>
         <Accordion.Body>
-          <Form.Check
-            type="switch"
-            label="Auto Exposure"
-            checked={settings.ae_enable ?? false}
-            onChange={e => update('ae_enable', e.target.checked)}
-            className="mb-3"
-          />
-          <fieldset disabled={settings.ae_enable ?? false}>
-            <Form.Group className="mb-3">
-              <Form.Label>
-                Exposure Time:{' '}
-                <span className="font-monospace text-success">{settings.exposure_time ?? 30000} µs</span>
-              </Form.Label>
-              <Form.Range
-                value={settings.exposure_time ?? 30000}
-                onChange={e => update('exposure_time', Number(e.target.value))}
-                min={1000} max={100000} step={1000}
-              />
-            </Form.Group>
-            <Form.Group className="mb-3">
-              <Form.Label>
-                Analogue Gain:{' '}
-                <span className="font-monospace text-success">{(settings.analogue_gain ?? 4.0).toFixed(1)}</span>
-              </Form.Label>
-              <Form.Range
-                value={settings.analogue_gain ?? 4.0}
-                onChange={e => update('analogue_gain', Number(e.target.value))}
-                min={1.0} max={16.0} step={0.5}
-              />
-            </Form.Group>
-          </fieldset>
+          <Form.Group className="mb-3">
+            <Form.Label>
+              Brightness:{' '}
+              <span className="font-monospace text-success">{settings.brightness ?? '—'}</span>
+            </Form.Label>
+            <Form.Range
+              value={parseInt(settings.brightness ?? '0x32', 16)}
+              onChange={e => update('brightness', '0x' + Number(e.target.value).toString(16).padStart(2, '0'))}
+              min={0} max={100} step={1}
+            />
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label>
+              Contrast:{' '}
+              <span className="font-monospace text-success">{settings.contrast ?? '—'}</span>
+            </Form.Label>
+            <Form.Range
+              value={parseInt(settings.contrast ?? '0x80', 16)}
+              onChange={e => update('contrast', '0x' + Number(e.target.value).toString(16).padStart(2, '0'))}
+              min={0} max={255} step={1}
+            />
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label>
+              Saturation:{' '}
+              <span className="font-monospace text-success">{settings.saturation ?? '—'}</span>
+            </Form.Label>
+            <Form.Range
+              value={parseInt(settings.saturation ?? '0x32', 16)}
+              onChange={e => update('saturation', '0x' + Number(e.target.value).toString(16).padStart(2, '0'))}
+              min={0} max={100} step={1}
+            />
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label>
+              Sharpness:{' '}
+              <span className="font-monospace text-success">{settings.sharppen ?? '—'}</span>
+            </Form.Label>
+            <Form.Range
+              value={parseInt(settings.sharppen ?? '0x05', 16)}
+              onChange={e => update('sharppen', '0x' + Number(e.target.value).toString(16).padStart(2, '0'))}
+              min={0} max={10} step={1}
+            />
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label>Denoise</Form.Label>
+            <Form.Select
+              value={settings.denoise ?? '0x00'}
+              onChange={e => update('denoise', e.target.value)}
+            >
+              <option value="0x00">2D Off / 3D Off</option>
+              <option value="0x01">2D Off / 3D Low</option>
+              <option value="0x02">2D Off / 3D Mid</option>
+              <option value="0x03">2D Off / 3D High</option>
+              <option value="0x04">2D Low / 3D Off</option>
+              <option value="0x05">2D Low / 3D Low</option>
+              <option value="0x06">2D Low / 3D Mid</option>
+              <option value="0x07">2D Low / 3D High</option>
+              <option value="0x08">2D Mid / 3D Off</option>
+              <option value="0x09">2D Mid / 3D Low</option>
+              <option value="0x0a">2D Mid / 3D Mid</option>
+              <option value="0x0b">2D Mid / 3D High</option>
+              <option value="0x0c">2D High / 3D Off</option>
+              <option value="0x0d">2D High / 3D Low</option>
+              <option value="0x0e">2D High / 3D Mid</option>
+              <option value="0x0f">2D High / 3D High</option>
+            </Form.Select>
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label>WDR Mode</Form.Label>
+            <Form.Select
+              value={settings.wdrmode ?? '0x00'}
+              onChange={e => update('wdrmode', e.target.value)}
+            >
+              <option value="0x00">Off</option>
+              <option value="0x01">Low Backlight</option>
+              <option value="0x02">High Backlight</option>
+              <option value="0x03">DOL WDR</option>
+            </Form.Select>
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label>
+              WDR Target Brightness:{' '}
+              <span className="font-monospace text-success">{settings.wdrtargetbr ?? '—'}</span>
+            </Form.Label>
+            <Form.Range
+              value={parseInt(settings.wdrtargetbr ?? '0x30', 16)}
+              onChange={e => update('wdrtargetbr', '0x' + Number(e.target.value).toString(16).padStart(2, '0'))}
+              min={0} max={255} step={1}
+            />
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label>
+              WDR Bright Area Target:{' '}
+              <span className="font-monospace text-success">{settings.wdrbtargetbr ?? '—'}</span>
+            </Form.Label>
+            <Form.Range
+              value={parseInt(settings.wdrbtargetbr ?? '0x30', 16)}
+              onChange={e => update('wdrbtargetbr', '0x' + Number(e.target.value).toString(16).padStart(2, '0'))}
+              min={0} max={255} step={1}
+            />
+          </Form.Group>
+        </Accordion.Body>
+      </Accordion.Item>
+
+      {/* White Balance */}
+      <Accordion.Item eventKey="2" className="bg-dark text-light border-secondary">
+        <Accordion.Header>White Balance</Accordion.Header>
+        <Accordion.Body>
+          <Form.Group className="mb-3">
+            <Form.Label>WB Mode</Form.Label>
+            <Form.Select
+              value={settings.wbmode ?? '0x18'}
+              onChange={e => update('wbmode', e.target.value)}
+            >
+              <option value="0x18">Auto</option>
+              <option value="0x1b">Manual</option>
+            </Form.Select>
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label>
+              AWB R-Gain (read-only):{' '}
+              <span className="font-monospace text-success">{settings.awbgain_rgain ?? '—'}</span>
+            </Form.Label>
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label>
+              AWB B-Gain (read-only):{' '}
+              <span className="font-monospace text-success">{settings.awbgain_bgain ?? '—'}</span>
+            </Form.Label>
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label>
+              Manual WB R-Gain:{' '}
+              <span className="font-monospace text-success">{settings.mwbgain_rgain ?? '—'}</span>
+            </Form.Label>
+            <Form.Range
+              value={parseInt(settings.mwbgain_rgain ?? '0x80', 16)}
+              onChange={e => update('mwbgain_rgain', '0x' + Number(e.target.value).toString(16).padStart(2, '0'))}
+              min={0} max={255} step={1}
+            />
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label>
+              Manual WB B-Gain:{' '}
+              <span className="font-monospace text-success">{settings.mwbgain_bgain ?? '—'}</span>
+            </Form.Label>
+            <Form.Range
+              value={parseInt(settings.mwbgain_bgain ?? '0x80', 16)}
+              onChange={e => update('mwbgain_bgain', '0x' + Number(e.target.value).toString(16).padStart(2, '0'))}
+              min={0} max={255} step={1}
+            />
+          </Form.Group>
+        </Accordion.Body>
+      </Accordion.Item>
+
+      {/* Camera Mode & Output */}
+      <Accordion.Item eventKey="3" className="bg-dark text-light border-secondary">
+        <Accordion.Header>Camera Mode</Accordion.Header>
+        <Accordion.Body>
+          <Form.Group className="mb-3">
+            <Form.Label>Video Format</Form.Label>
+            <Form.Select
+              value={settings.videoformat ?? '0x01'}
+              onChange={e => update('videoformat', e.target.value)}
+            >
+              <option value="0x00">PAL (25 fps)</option>
+              <option value="0x01">NTSC (30 fps)</option>
+            </Form.Select>
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label>Mirror Mode</Form.Label>
+            <Form.Select
+              value={settings.mirrormode ?? '0x00'}
+              onChange={e => update('mirrormode', e.target.value)}
+            >
+              <option value="0x00">Normal</option>
+              <option value="0x01">Mirror</option>
+              <option value="0x02">Flip (180°)</option>
+              <option value="0x03">Mirror + Flip (180°)</option>
+            </Form.Select>
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label>Camera Mode</Form.Label>
+            <Form.Select
+              value={settings.cameramode ?? '0x00'}
+              onChange={e => update('cameramode', e.target.value)}
+            >
+              <option value="0x00">Stream</option>
+              <option value="0x01">Capture</option>
+            </Form.Select>
+          </Form.Group>
+          <Form.Group className="mb-3">
+            <Form.Label>
+              Frame Drop (nodf):{' '}
+              <span className="font-monospace text-success">{settings.nodf ?? '0x00'}</span>
+            </Form.Label>
+            <Form.Range
+              value={parseInt(settings.nodf ?? '0x00', 16)}
+              onChange={e => update('nodf', '0x' + Number(e.target.value).toString(16).padStart(2, '0'))}
+              min={0} max={255} step={1}
+            />
+            <Form.Text className="text-muted">
+              Effective FPS = base FPS / (1 + nodf)
+            </Form.Text>
+          </Form.Group>
         </Accordion.Body>
       </Accordion.Item>
 
       {/* Encoding */}
-      <Accordion.Item eventKey="2" className="bg-dark text-light border-secondary">
+      <Accordion.Item eventKey="4" className="bg-dark text-light border-secondary">
         <Accordion.Header>Encoding</Accordion.Header>
         <Accordion.Body>
           <Form.Group className="mb-3">

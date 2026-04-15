@@ -42,12 +42,35 @@ export interface CameraStats {
 }
 
 export interface CameraHWSettings {
-  ir_mode?: string;
-  clahe_enabled?: boolean;
-  ae_enable?: boolean;
-  exposure_time?: number;
-  analogue_gain?: number;
   jpeg_quality?: number;
+  // ISP parameters (VEYE I2C)
+  daynightmode?: string;
+  mshutter?: string;
+  agc?: string;
+  denoise?: string;
+  brightness?: string;
+  contrast?: string;
+  saturation?: string;
+  sharppen?: string;
+  wdrmode?: string;
+  lowlight?: string;
+  wbmode?: string;
+  // Extended ISP params
+  videoformat?: string;
+  mirrormode?: string;
+  ircutdir?: string;
+  irtrigger?: string;
+  cameramode?: string;
+  nodf?: string;
+  wdrtargetbr?: string;
+  wdrbtargetbr?: string;
+  aespeed_agc?: string;
+  aespeed_shutter?: string;
+  mwbgain_rgain?: string;
+  mwbgain_bgain?: string;
+  // Read-only
+  awbgain_rgain?: string;
+  awbgain_bgain?: string;
 }
 
 export interface Recording {
