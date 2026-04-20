@@ -1,5 +1,5 @@
 import { ListGroup, Button, Nav } from 'react-bootstrap';
-import { BsCameraVideo, BsPlusLg, BsCameraReels, BsGrid } from 'react-icons/bs';
+import { BsCameraVideo, BsPlusLg, BsCameraReels, BsGrid, BsGpuCard } from 'react-icons/bs';
 import { useCameras } from '../context/CameraContext';
 import type { Camera } from '../types/camera';
 
@@ -12,8 +12,8 @@ function statusColor(cam: Camera): string {
 
 interface Props {
   onAddClick: () => void;
-  view: 'cameras' | 'recordings';
-  onViewChange: (v: 'cameras' | 'recordings') => void;
+  view: 'cameras' | 'recordings' | 'engines';
+  onViewChange: (v: 'cameras' | 'recordings' | 'engines') => void;
 }
 
 export default function Sidebar({ onAddClick, view, onViewChange }: Props) {
@@ -25,9 +25,9 @@ export default function Sidebar({ onAddClick, view, onViewChange }: Props) {
   };
 
   return (
-    <div className="d-flex flex-column h-100 bg-dark text-light" style={{ width: 260 }}>
+    <div className="d-flex flex-column h-100 bg-dark text-light border-end border-secondary" style={{ width: 260 }}>
       {/* View toggle */}
-      <Nav variant="pills" className="px-3 pt-2 gap-1" data-bs-theme="dark">
+      <Nav variant="pills" className="px-3 pt-2 gap-1">
         <Nav.Item>
           <Nav.Link
             active={view === 'cameras' && !selectedId}
@@ -50,6 +50,16 @@ export default function Sidebar({ onAddClick, view, onViewChange }: Props) {
             </Nav.Link>
           </Nav.Item>
         )}
+        <Nav.Item>
+          <Nav.Link
+            active={view === 'engines' && !selectedId}
+            onClick={() => { selectCamera(null); onViewChange('engines'); }}
+            className="py-1 px-2 d-flex align-items-center gap-1"
+            style={{ fontSize: '0.8rem' }}
+          >
+            <BsGpuCard size={12} /> Engines
+          </Nav.Link>
+        </Nav.Item>
       </Nav>
 
       <div className="p-3 border-bottom border-secondary d-flex align-items-center justify-content-between">

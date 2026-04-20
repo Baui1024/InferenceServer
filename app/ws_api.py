@@ -13,6 +13,10 @@ from app.camera_store import CameraStore
 from app.pipeline_manager import PipelineManager
 from app.camera_hw_proxy import HWProxyManager
 from app.recorder import list_recordings, get_recording, delete_recording
+from app.engine_manager import (
+    list_engines, delete_engine, compile_engine, COMPILABLE_MODELS,
+    _gpu_info, get_engine_path, ENGINES_DIR,
+)
 
 
 class WebSocketAPI:
@@ -23,6 +27,7 @@ class WebSocketAPI:
         self.manager = manager
         self._clients: set[web.WebSocketResponse] = set()
         self._stats_task: Optional[asyncio.Task] = None
+        self._compile_task: Optional[asyncio.Task] = None
 
         # HW proxy manager — forwards camera settings to RPi
         self.hw_proxies = HWProxyManager(on_settings=self._on_hw_settings)
@@ -67,7 +72,10 @@ class WebSocketAPI:
         """Send server config and camera list to a newly connected client."""
         await self._send(ws, "server_config", {
             "recording_enabled": config.RECORDING_ENABLED,
+            "gpu": _gpu_info(),
+            "compilable_models": COMPILABLE_MODELS,
         })
+        await self._send(ws, "engines", list_engines())
 
     # -- Message dispatch --
 
@@ -96,6 +104,10 @@ class WebSocketAPI:
             "list_recordings": self._handle_list_recordings,
             "delete_recording": self._handle_delete_recording,
             "play_recording": self._handle_play_recording,
+            # TensorRT engines
+            "list_engines": self._handle_list_engines,
+            "compile_engine": self._handle_compile_engine,
+            "delete_engine": self._handle_delete_engine,
         }.get(msg_type)
 
         if handler:
@@ -303,6 +315,57 @@ class WebSocketAPI:
         await self.manager.start_camera(camera)
         await self._broadcast("cameras", self.store.all())
         await self._broadcast("playback_started", {"camera_id": camera["id"]})
+
+    # -- TensorRT engine handlers --
+
+    async def _handle_list_engines(self, ws, data):
+        await self._send(ws, "engines", list_engines())
+
+    async def _handle_compile_engine(self, ws, data):
+        model_name = data.get("model", "")
+        if not model_name:
+            await self._send(ws, "error", {"message": "Missing model name"})
+            return
+
+        if self._compile_task and not self._compile_task.done():
+            await self._send(ws, "error", {"message": "A compilation is already in progress"})
+            return
+
+        async def _run_compile():
+            try:
+                loop = asyncio.get_running_loop()
+
+                def on_progress(status: str, percent: int):
+                    asyncio.run_coroutine_threadsafe(
+                        self._broadcast("engine_compile_progress", {
+                            "model": model_name,
+                            "status": status,
+                            "percent": percent,
+                        }),
+                        loop,
+                    )
+
+                result = await compile_engine(model_name, on_progress)
+                await self._broadcast("engine_compiled", result)
+                await self._broadcast("engines", list_engines())
+            except (ValueError, RuntimeError) as e:
+                await self._broadcast("engine_compile_error", {
+                    "model": model_name,
+                    "error": str(e),
+                })
+
+        self._compile_task = asyncio.create_task(_run_compile())
+
+    async def _handle_delete_engine(self, ws, data):
+        filename = data.get("filename", "")
+        if not filename:
+            await self._send(ws, "error", {"message": "Missing engine filename"})
+            return
+        deleted = delete_engine(filename)
+        if deleted:
+            await self._broadcast("engines", list_engines())
+        else:
+            await self._send(ws, "error", {"message": "Engine not found"})
 
     # -- Messaging helpers --
 

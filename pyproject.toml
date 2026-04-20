@@ -13,13 +13,24 @@ dependencies = [
     "torchvision>=0.15",
     "openvino>=2026.0.0",
     "aiohttp>=3.13.3",
+    "tensorrt-cu12>=10.16",
+    "tensorrt-cu12-bindings>=10.16",
+    "tensorrt-cu12-libs>=10.16",
 ]
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu126" }
 torchvision = { index = "pytorch-cu126" }
+tensorrt-cu12 = { index = "nvidia" }
+tensorrt-cu12-bindings = { index = "nvidia" }
+tensorrt-cu12-libs = { index = "nvidia" }
 
 [[tool.uv.index]]
 name = "pytorch-cu126"
 url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[[tool.uv.index]]
+name = "nvidia"
+url = "https://pypi.nvidia.com"
 explicit = true

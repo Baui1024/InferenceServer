@@ -101,7 +101,7 @@ export default function CameraView() {
         className="bg-dark border-start border-secondary overflow-auto"
         style={{ width: 340, flexShrink: 0 }}
       >
-        <Tabs defaultActiveKey="detection" className="px-2 pt-2" data-bs-theme="dark">
+        <Tabs defaultActiveKey="detection" className="px-2 pt-2">
           <Tab eventKey="detection" title="Detection">
             <CameraSettings camera={camera} />
           </Tab>

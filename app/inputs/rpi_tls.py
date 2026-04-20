@@ -148,7 +148,7 @@ class RPiTLSReceiver(InputReceiver):
                     )
                     if numpy_frame is not None:
                         frame_count += 1
-                        if frame_count <= 5 or frame_count % 100 == 0:
+                        if frame_count <= 5 or frame_count % 1000 == 0:
                             logger.info(f"RPi frame #{frame_count}: {numpy_frame.shape}")
                         self.on_frame(numpy_frame)
                     else:

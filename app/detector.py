@@ -16,7 +16,7 @@ class Detector:
 
     def __init__(
         self,
-        model_name: str = "yolov8n.pt",  # nano model for speed
+        model_name: str = "yolo11m.pt",
         confidence: float = 0.5,
         device: Optional[str] = None,  # None = auto-select (CUDA if available)
         person_only: bool = True,  # Only detect people
@@ -33,8 +33,18 @@ class Detector:
         self.confidence = confidence
         self.classes = [self.PERSON_CLASS] if person_only else None
         
-        logger.info(f"Loading YOLO model: {model_name}")
-        self.model = YOLO(model_name)
+        # Resolve engine files from engines/ directory
+        model_path = model_name
+        if model_name.endswith(".engine"):
+            from app.engine_manager import get_engine_path
+            engine_path = get_engine_path(model_name)
+            if engine_path:
+                model_path = str(engine_path)
+            else:
+                raise FileNotFoundError(f"TensorRT engine not found: {model_name}")
+
+        logger.info(f"Loading YOLO model: {model_path}")
+        self.model = YOLO(model_path)
         
         # Move to GPU if available
         if device:

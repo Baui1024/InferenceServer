@@ -88,6 +88,23 @@ export interface Recording {
 
 export interface ServerConfig {
   recording_enabled: boolean;
+  gpu: {
+    name: string | null;
+    capability: string | null;
+  };
+  compilable_models: string[];
+}
+
+export interface TRTEngine {
+  filename: string;
+  source_model: string;
+  size_mb: number;
+}
+
+export interface EngineCompileProgress {
+  model: string;
+  status: string;
+  percent: number;
 }
 
 export interface WSMessage {

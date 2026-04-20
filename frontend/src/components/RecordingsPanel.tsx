@@ -47,7 +47,7 @@ export default function RecordingsPanel() {
   };
 
   return (
-    <div className="p-3 overflow-auto h-100" data-bs-theme="dark">
+    <div className="p-3 overflow-auto h-100">
       <div className="d-flex align-items-center justify-content-between mb-3">
         <h5 className="mb-0">Recordings</h5>
         <Button variant="outline-light" size="sm" onClick={() => send('list_recordings')}>

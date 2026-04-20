@@ -12,10 +12,12 @@ export default function CameraHWSettingsPanel({ camera }: Props) {
   const settings = hwSettings[camera.id];
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  // Request current settings on mount
+  // Request current settings on mount (only for RPi cameras)
   useEffect(() => {
-    send('camera_hw_get', { id: camera.id });
-  }, [camera.id, send]);
+    if (camera.type === 'rpi') {
+      send('camera_hw_get', { id: camera.id });
+    }
+  }, [camera.id, camera.type, send]);
 
   const update = useCallback(
     (field: string, value: unknown) => {

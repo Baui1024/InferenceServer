@@ -46,7 +46,7 @@ export default function AddCameraModal({ show, onHide }: Props) {
   const canSubmit = host.trim().length > 0 && port > 0 && port <= 65535;
 
   return (
-    <Modal show={show} onHide={handleClose} centered data-bs-theme="dark">
+    <Modal show={show} onHide={handleClose} centered>
       <Modal.Header closeButton className="bg-dark text-light border-secondary">
         <Modal.Title>
           {step === 0 && 'Connection Details'}

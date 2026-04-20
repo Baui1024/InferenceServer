@@ -8,8 +8,9 @@ import CameraGrid from './components/CameraGrid';
 import CameraView from './components/CameraView';
 import AddCameraModal from './components/AddCameraModal';
 import RecordingsPanel from './components/RecordingsPanel';
+import EngineManager from './components/EngineManager';
 
-type View = 'cameras' | 'recordings';
+type View = 'cameras' | 'recordings' | 'engines';
 
 function AppContent() {
   const { selectedId } = useCameras();
@@ -19,11 +20,12 @@ function AppContent() {
   const mainContent = () => {
     if (selectedId) return <CameraView />;
     if (view === 'recordings') return <RecordingsPanel />;
+    if (view === 'engines') return <EngineManager />;
     return <CameraGrid />;
   };
 
   return (
-    <div className="d-flex flex-column vh-100" data-bs-theme="dark">
+    <div className="d-flex flex-column vh-100">
       <Navbar bg="dark" variant="dark" className="border-bottom border-secondary px-3 py-1" style={{ flexShrink: 0 }}>
         <Container fluid className="px-0">
           <Navbar.Brand className="d-flex align-items-center gap-2 mb-0">

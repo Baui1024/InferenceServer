@@ -7,8 +7,17 @@ interface Props {
   camera: Camera;
 }
 
+const PT_MODELS = [
+  { value: 'yolo11m.pt', label: 'YOLO11 Medium' },
+  { value: 'yolo11l.pt', label: 'YOLO11 Large' },
+  { value: 'yolo11x.pt', label: 'YOLO11 XL' },
+  { value: 'yolo26m.pt', label: 'YOLO26 Medium' },
+  { value: 'yolo26l.pt', label: 'YOLO26 Large' },
+  { value: 'yolo26x.pt', label: 'YOLO26 XL' },
+];
+
 export default function CameraSettings({ camera }: Props) {
-  const { send } = useCameras();
+  const { send, engines } = useCameras();
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const update = useCallback(
@@ -46,13 +55,20 @@ export default function CameraSettings({ camera }: Props) {
                   value={camera.yolo_model}
                   onChange={e => update('yolo_model', e.target.value)}
                 >
-                  <option value="yolov8n.pt">YOLOv8 Nano</option>
-                  <option value="yolov8s.pt">YOLOv8 Small</option>
-                  <option value="yolov8m.pt">YOLOv8 Medium</option>
-                  <option value="yolo11m.pt">YOLO11 Medium</option>
-                  <option value="yolov8l.pt">YOLOv8 Large</option>
-                  <option value="yolov8x.pt">YOLOv8 XL</option>
-                  <option value="yolo11x.pt">YOLO11 XL</option>
+                  <optgroup label="PyTorch">
+                    {PT_MODELS.map(m => (
+                      <option key={m.value} value={m.value}>{m.label}</option>
+                    ))}
+                  </optgroup>
+                  {engines.length > 0 && (
+                    <optgroup label="TensorRT (FP16)">
+                      {engines.map(e => (
+                        <option key={e.filename} value={e.filename}>
+                          {e.source_model.replace('.pt', '')} ⚡ ({e.size_mb} MB)
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </Form.Select>
               </Form.Group>
               <Form.Group className="mb-3">
