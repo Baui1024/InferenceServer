@@ -25,7 +25,7 @@ class VideoRecorder:
     def __init__(self, camera_id: str, camera_name: str, fps: float = 15.0):
         self._camera_id = camera_id
         self._camera_name = camera_name
-        self._fps = fps
+        self._nominal_fps = fps
 
         self._lock = threading.Lock()
         self._writer: Optional[cv2.VideoWriter] = None
@@ -35,6 +35,8 @@ class VideoRecorder:
         self._start_time: Optional[float] = None
         self._resolution: Optional[tuple[int, int]] = None
         self._recording_id: Optional[str] = None
+        self._frame_times: list[float] = []
+        self._fps: float = fps
 
     @property
     def is_recording(self) -> bool:
@@ -57,6 +59,7 @@ class VideoRecorder:
         self._frame_count = 0
         self._start_time = time.time()
         self._resolution = None
+        self._frame_times = []
 
         logger.info(f"Recording started: {self._recording_id}")
         return self._recording_id
@@ -64,9 +67,27 @@ class VideoRecorder:
     def write_frame(self, frame: np.ndarray) -> None:
         """Write a single raw frame. Called from the receiver thread."""
         with self._lock:
-            if self._writer is None and self._video_path is not None and self._start_time is not None:
+            if self._start_time is None or self._video_path is None:
+                return
+
+            now = time.time()
+            self._frame_times.append(now)
+
+            if self._writer is None:
                 h, w = frame.shape[:2]
                 self._resolution = (w, h)
+
+                # Wait for a few frames to measure actual FPS
+                if len(self._frame_times) < 10:
+                    return
+
+                elapsed = self._frame_times[-1] - self._frame_times[0]
+                if elapsed > 0:
+                    measured_fps = (len(self._frame_times) - 1) / elapsed
+                else:
+                    measured_fps = self._nominal_fps
+                self._fps = round(measured_fps, 2)
+
                 fourcc = cv2.VideoWriter_fourcc(*"mp4v")
                 self._writer = cv2.VideoWriter(
                     str(self._video_path), fourcc, self._fps, (w, h)
@@ -75,6 +96,11 @@ class VideoRecorder:
                     logger.error("Failed to open VideoWriter")
                     self._writer = None
                     return
+
+                logger.info(
+                    f"Recording measured FPS: {self._fps:.1f} "
+                    f"(nominal {self._nominal_fps})"
+                )
 
             if self._writer is not None:
                 self._writer.write(frame)
