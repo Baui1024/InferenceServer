@@ -83,6 +83,13 @@ export default function CameraSettings({ camera }: Props) {
               </Form.Group>
               <Form.Check
                 type="switch"
+                label="Show below Confidence"
+                className="mb-3"
+                checked={camera.show_below_confidence}
+                onChange={e => update('show_below_confidence', e.target.checked)}
+              />
+              <Form.Check
+                type="switch"
                 label="Person Only"
                 checked={camera.yolo_person_only}
                 onChange={e => update('yolo_person_only', e.target.checked)}
@@ -149,10 +156,48 @@ export default function CameraSettings({ camera }: Props) {
             label="Motion Detection"
             checked={camera.motion_detection_enabled}
             onChange={e => update('motion_detection_enabled', e.target.checked)}
-            className="mb-3"
+            className="mb-2"
           />
+          <Form.Text className="text-muted d-block mb-3">
+            Skips AI inference on static frames to save GPU resources.
+          </Form.Text>
           {camera.motion_detection_enabled && (
             <>
+              <Form.Check
+                type="switch"
+                label="Show Motion Debug"
+                checked={camera.show_motion_debug}
+                onChange={e => update('show_motion_debug', e.target.checked)}
+                className="mb-3"
+              />
+
+              {/* Live motion bar */}
+              {camera.stats?.motion_pct !== undefined && (
+                <Form.Group className="mb-3">
+                  <Form.Label className="d-flex justify-content-between">
+                    <span>Live Motion</span>
+                    <span className="font-monospace text-success">{camera.stats.motion_pct.toFixed(2)}%</span>
+                  </Form.Label>
+                  <div className="position-relative" style={{ height: 20 }}>
+                    <div className="progress bg-secondary" style={{ height: '100%' }}>
+                      <div
+                        className={`progress-bar ${camera.stats.motion_pct >= camera.motion_min_area_percent ? 'bg-success' : 'bg-danger'}`}
+                        style={{ width: `${Math.min(camera.stats.motion_pct / 5 * 100, 100)}%`, transition: 'width 0.3s' }}
+                      />
+                    </div>
+                    {/* Min area marker */}
+                    <div
+                      className="position-absolute top-0 border-start border-warning"
+                      style={{ left: `${Math.min(camera.motion_min_area_percent / 5 * 100, 100)}%`, height: '100%', borderWidth: '2px !important' }}
+                      title={`Min Area threshold: ${camera.motion_min_area_percent}%`}
+                    />
+                  </div>
+                  <Form.Text className="text-muted">
+                    Green = motion triggers inference. Yellow line = min area threshold.
+                  </Form.Text>
+                </Form.Group>
+              )}
+
               <Form.Group className="mb-3">
                 <Form.Label>
                   Threshold: <span className="font-monospace text-success">{camera.motion_threshold.toFixed(1)}%</span>
@@ -162,6 +207,9 @@ export default function CameraSettings({ camera }: Props) {
                   onChange={e => update('motion_threshold', Number(e.target.value))}
                   min={0.5} max={20} step={0.5}
                 />
+                <Form.Text className="text-muted">
+                  Pixel sensitivity. Lower = detects subtle changes (shadows, noise). Higher = only large brightness changes.
+                </Form.Text>
               </Form.Group>
               <Form.Group className="mb-3">
                 <Form.Label>
@@ -172,6 +220,9 @@ export default function CameraSettings({ camera }: Props) {
                   onChange={e => update('motion_min_area_percent', Number(e.target.value))}
                   min={0.01} max={5} step={0.01}
                 />
+                <Form.Text className="text-muted">
+                  Minimum % of frame pixels that must change. Filters out small noise — increase if getting false triggers.
+                </Form.Text>
               </Form.Group>
             </>
           )}

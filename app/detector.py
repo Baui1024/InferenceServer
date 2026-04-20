@@ -81,19 +81,21 @@ class Detector:
         
         return annotated
 
-    def detect_raw(self, frame: np.ndarray) -> list:
+    def detect_raw(self, frame: np.ndarray, low_confidence: bool = False) -> list:
         """
         Run detection and return raw results (boxes, classes, confidences).
 
         Args:
             frame: BGR image as numpy array
+            low_confidence: If True, use a very low threshold and tag results
 
         Returns:
-            List of detections, each with (bbox, class_id, class_name, confidence)
+            List of detections, each with (bbox, class_id, class_name, confidence, below_threshold)
         """
+        conf = 0.05 if low_confidence else self.confidence
         results = self.model(
             frame,
-            conf=self.confidence,
+            conf=conf,
             classes=self.classes,
             verbose=False,
         )
@@ -112,6 +114,7 @@ class Detector:
                     "class_id": cls_id,
                     "class_name": cls_name,
                     "confidence": conf,
+                    "below_threshold": low_confidence and conf < self.confidence,
                 })
         
         return detections

@@ -26,6 +26,7 @@ _DEFAULTS = {
     "yolo_model": "yolo11m.pt",
     "yolo_confidence": 0.5,
     "yolo_person_only": True,
+    "show_below_confidence": False,
     "openvino_model": "person-detection-retail-0013",
     "openvino_device": "CPU",
     "openvino_confidence": 0.1,
@@ -34,6 +35,7 @@ _DEFAULTS = {
     "motion_detection_enabled": False,
     "motion_threshold": 2.0,
     "motion_min_area_percent": 0.15,
+    "show_motion_debug": False,
     # Camera hardware WS (RPi only)
     "camera_ws_port": 8082,
 }
@@ -42,9 +44,9 @@ _DEFAULTS = {
 PIPELINE_FIELDS = {
     "type", "host", "port", "enabled",
     "use_tls", "ca_cert", "client_cert", "client_key",
-    "detector_backend", "yolo_model", "yolo_confidence", "yolo_person_only",
+    "detector_backend", "yolo_model", "yolo_confidence", "yolo_person_only", "show_below_confidence",
     "openvino_model", "openvino_device", "openvino_confidence",
-    "max_fps", "motion_detection_enabled", "motion_threshold", "motion_min_area_percent",
+    "max_fps", "motion_detection_enabled", "motion_threshold", "motion_min_area_percent", "show_motion_debug",
     "recording_id", "loop_playback", "playback_fps",
 }
 

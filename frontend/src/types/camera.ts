@@ -15,6 +15,7 @@ export interface Camera {
   yolo_model: string;
   yolo_confidence: number;
   yolo_person_only: boolean;
+  show_below_confidence: boolean;
   openvino_model: string;
   openvino_device: string;
   openvino_confidence: number;
@@ -23,6 +24,7 @@ export interface Camera {
   motion_detection_enabled: boolean;
   motion_threshold: number;
   motion_min_area_percent: number;
+  show_motion_debug: boolean;
   // Camera HW (RPi only)
   camera_ws_port: number;
   // Recording playback
@@ -39,6 +41,7 @@ export interface CameraStats {
   detection_count: number;
   frame_count: number;
   recording?: boolean;
+  motion_pct?: number;
 }
 
 export interface CameraHWSettings {

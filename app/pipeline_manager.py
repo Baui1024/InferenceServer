@@ -77,19 +77,22 @@ def draw_detections(frame: np.ndarray, detections: list) -> np.ndarray:
         x1, y1, x2, y2 = [int(v) for v in det["bbox"]]
         conf = det["confidence"]
         label = f'{det["class_name"]} {conf:.2f}'
+        below = det.get("below_threshold", False)
+        color = (0, 0, 255) if below else (0, 255, 0)  # red for below, green for above
 
-        cv2.rectangle(annotated, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2)
         label_size, _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)
         cv2.rectangle(
             annotated,
             (x1, y1 - label_size[1] - 10),
             (x1 + label_size[0], y1),
-            (0, 255, 0),
+            color,
             -1,
         )
+        text_color = (255, 255, 255) if below else (0, 0, 0)
         cv2.putText(
             annotated, label, (x1, y1 - 5),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2,
+            cv2.FONT_HERSHEY_SIMPLEX, 0.6, text_color, 2,
         )
     return annotated
 
@@ -230,6 +233,8 @@ class CameraPipeline:
 
         # Motion detection skip
         if self._motion_detector and not self._motion_detector.has_motion(frame):
+            if self.cfg.get("show_motion_debug"):
+                frame = self._overlay_motion(frame)
             self._encode_and_store(frame)
             return
 
@@ -237,10 +242,14 @@ class CameraPipeline:
         if self._detector is None:
             return
         start = time.perf_counter()
-        detections = self._detector.detect_raw(frame)
+        low_conf = self.cfg.get("show_below_confidence", False)
+        detections = self._detector.detect_raw(frame, low_confidence=low_conf)
         inference_ms = (time.perf_counter() - start) * 1000
 
         annotated = draw_detections(frame, detections) if detections else frame
+
+        if self._motion_detector and self.cfg.get("show_motion_debug"):
+            annotated = self._overlay_motion(annotated)
 
         # Update stats
         with self._lock:
@@ -251,6 +260,23 @@ class CameraPipeline:
                 self._inference_times.clear()
 
         self._encode_and_store(annotated)
+
+    def _overlay_motion(self, frame: np.ndarray) -> np.ndarray:
+        """Overlay a motion heatmap + stats text onto the frame."""
+        if not self._motion_detector:
+            return frame
+        diff = self._motion_detector.get_diff_frame(frame)
+        # Colorize the diff as a heatmap
+        heatmap = cv2.applyColorMap(diff, cv2.COLORMAP_JET)
+        # Blend onto frame (30% heatmap)
+        blended = cv2.addWeighted(frame, 0.7, heatmap, 0.3, 0)
+        # Draw motion % text
+        pct = self._motion_detector.last_change_percent
+        triggered = pct >= self.cfg.get("motion_min_area_percent", 0.15)
+        color = (0, 255, 0) if triggered else (0, 0, 255)
+        text = f"Motion: {pct:.2f}%"
+        cv2.putText(blended, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+        return blended
 
     def _encode_and_store(self, frame: np.ndarray) -> None:
         """JPEG-encode the frame and store it for streaming."""
@@ -277,6 +303,9 @@ class CameraPipeline:
 
     def get_stats(self) -> dict:
         with self._lock:
+            motion_pct = 0.0
+            if self._motion_detector:
+                motion_pct = round(self._motion_detector.last_change_percent, 2)
             return {
                 "id": self.camera_id,
                 "status": self._status,
@@ -284,6 +313,7 @@ class CameraPipeline:
                 "inference_ms": round(self._avg_inference_ms, 1),
                 "detection_count": self._detection_count,
                 "frame_count": self._frame_count,
+                "motion_pct": motion_pct,
             }
 
 
