@@ -1,6 +1,7 @@
 """Camera hardware settings proxy — forwards WS commands to RPi cameras."""
 
 import asyncio
+import ssl
 from typing import Callable, Optional
 
 import aiohttp
@@ -11,17 +12,20 @@ class CameraHWProxy:
     """Manages a WebSocket connection to a Raspberry Pi camera control server."""
 
     def __init__(self, camera_id: str, host: str, port: int,
-                 on_settings: Callable[[str, dict], None]):
+                 on_settings: Callable[[str, dict], None],
+                 use_tls: bool = False):
         """
         Args:
             camera_id: ID of the camera this proxy belongs to.
             host: RPi hostname / IP.
             port: RPi camera WS port (e.g. 8082).
             on_settings: Callback(camera_id, settings_dict) when settings arrive.
+            use_tls: Connect via wss:// instead of ws://.
         """
         self.camera_id = camera_id
         self.host = host
         self.port = port
+        self.use_tls = use_tls
         self._on_settings = on_settings
 
         self._session: Optional[aiohttp.ClientSession] = None
@@ -68,12 +72,18 @@ class CameraHWProxy:
 
     async def _listen_loop(self) -> None:
         """Connect and listen, with auto-reconnect."""
-        url = f"ws://{self.host}:{self.port}"
+        scheme = "wss" if self.use_tls else "ws"
+        url = f"{scheme}://{self.host}:{self.port}"
+        ssl_ctx: Optional[ssl.SSLContext] = None
+        if self.use_tls:
+            ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+            ssl_ctx.check_hostname = False
+            ssl_ctx.verify_mode = ssl.CERT_NONE
         delay = 1.0
         while self._running:
             try:
                 logger.debug(f"HW proxy connecting to {url}")
-                self._ws = await self._session.ws_connect(url)  # type: ignore[union-attr]
+                self._ws = await self._session.ws_connect(url, ssl=ssl_ctx)  # type: ignore[union-attr]
                 delay = 1.0
                 logger.info(f"HW proxy connected to {url}")
 
@@ -106,11 +116,12 @@ class HWProxyManager:
         self._proxies: dict[str, CameraHWProxy] = {}
         self._on_settings = on_settings
 
-    async def ensure_proxy(self, camera_id: str, host: str, port: int) -> CameraHWProxy:
+    async def ensure_proxy(self, camera_id: str, host: str, port: int,
+                           use_tls: bool = False) -> CameraHWProxy:
         """Get or create a proxy for a camera."""
         if camera_id in self._proxies:
             return self._proxies[camera_id]
-        proxy = CameraHWProxy(camera_id, host, port, self._on_settings)
+        proxy = CameraHWProxy(camera_id, host, port, self._on_settings, use_tls=use_tls)
         self._proxies[camera_id] = proxy
         await proxy.connect()
         return proxy

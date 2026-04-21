@@ -234,7 +234,8 @@ class WebSocketAPI:
             return
 
         proxy = await self.hw_proxies.ensure_proxy(
-            camera_id, camera["host"], camera.get("camera_ws_port", 8082))
+            camera_id, camera["host"], camera.get("camera_ws_port", 8082),
+            use_tls=camera.get("use_tls", False))
         await proxy.send_get()
 
     async def _handle_hw_set(self, ws, data):
@@ -249,7 +250,8 @@ class WebSocketAPI:
             return
 
         proxy = await self.hw_proxies.ensure_proxy(
-            camera_id, camera["host"], camera.get("camera_ws_port", 8082))
+            camera_id, camera["host"], camera.get("camera_ws_port", 8082),
+            use_tls=camera.get("use_tls", False))
         await proxy.send_set(settings)
 
     async def _handle_hw_reset(self, ws, data):
@@ -263,7 +265,8 @@ class WebSocketAPI:
             return
 
         proxy = await self.hw_proxies.ensure_proxy(
-            camera_id, camera["host"], camera.get("camera_ws_port", 8082))
+            camera_id, camera["host"], camera.get("camera_ws_port", 8082),
+            use_tls=camera.get("use_tls", False))
         await proxy.send_reset()
 
     # -- HW settings callback (from proxy) --
