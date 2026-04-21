@@ -42,6 +42,17 @@ export interface CameraStats {
   frame_count: number;
   recording?: boolean;
   motion_pct?: number;
+  playback?: PlaybackInfo;
+}
+
+export interface PlaybackInfo {
+  current_frame: number;
+  total_frames: number;
+  duration_sec: number;
+  native_fps: number;
+  paused: boolean;
+  start_frame: number;
+  end_frame: number;
 }
 
 export interface CameraHWSettings {

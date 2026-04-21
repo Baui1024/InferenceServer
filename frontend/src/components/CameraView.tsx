@@ -1,5 +1,6 @@
-import { Tab, Tabs, Badge, Button } from 'react-bootstrap';
-import { BsArrowLeft, BsTrash, BsRecordCircle, BsStopCircle } from 'react-icons/bs';
+import { useState, useCallback, useEffect } from 'react';
+import { Tab, Tabs, Badge, Button, Form, OverlayTrigger, Tooltip } from 'react-bootstrap';
+import { BsArrowLeft, BsTrash, BsRecordCircle, BsStopCircle, BsPauseFill, BsPlayFill, BsSkipForwardFill, BsSkipBackwardFill, BsStopFill } from 'react-icons/bs';
 import { useCameras } from '../context/CameraContext';
 import CameraSettings from './CameraSettings';
 import CameraHWSettingsPanel from './CameraHWSettings';
@@ -7,6 +8,46 @@ import CameraHWSettingsPanel from './CameraHWSettings';
 export default function CameraView() {
   const { cameras, selectedId, selectCamera, send, serverConfig } = useCameras();
   const camera = cameras.find(c => c.id === selectedId);
+  const [rangeEditing, setRangeEditing] = useState(false);
+  const [localStart, setLocalStart] = useState<string>('');
+  const [localEnd, setLocalEnd] = useState<string>('');
+
+  // Optimistic playback state — flips instantly on click, reconciled by backend stats
+  const [optPaused, setOptPaused] = useState<boolean | null>(null);
+  const [optFrame, setOptFrame] = useState<number | null>(null);
+
+  // Sync local range inputs when playback info changes and we're not editing
+  const pb = camera?.stats?.playback;
+
+  // Reconcile optimistic state when backend stats arrive
+  useEffect(() => {
+    if (pb) {
+      setOptPaused(null);
+      setOptFrame(null);
+    }
+  }, [pb?.paused, pb?.current_frame]);
+
+  useEffect(() => {
+    if (pb && !rangeEditing) {
+      setLocalStart(String(pb.start_frame));
+      setLocalEnd(String(pb.end_frame));
+    }
+  }, [pb?.start_frame, pb?.end_frame, rangeEditing]);
+
+  const commitRange = useCallback((field: 'start_frame' | 'end_frame', value: string) => {
+    const num = parseInt(value, 10);
+    if (!isNaN(num) && camera) {
+      send('playback_set_range', { id: camera.id, [field]: num });
+    }
+  }, [camera?.id, send]);
+
+  const formatTime = useCallback((frames: number, fps: number) => {
+    if (!fps) return '0:00';
+    const secs = Math.floor(frames / fps);
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  }, []);
 
   if (!camera) {
     return (
@@ -94,6 +135,153 @@ export default function CameraView() {
             </span>
           )}
         </div>
+
+        {/* Playback controls */}
+        {isPlayback && camera.stats?.playback && (() => {
+          const pb = camera.stats.playback;
+          const fps = pb.native_fps || 15;
+          const paused = optPaused ?? pb.paused;
+          const frame = optFrame ?? pb.current_frame;
+          return (
+            <div className="bg-dark border-top border-secondary px-3 py-2">
+              {/* Transport controls + timeline */}
+              <div className="d-flex align-items-center gap-2 mb-1">
+                <OverlayTrigger placement="top" overlay={<Tooltip>Stop (jump to start)</Tooltip>}>
+                  <Button
+                    variant="outline-secondary"
+                    size="sm"
+                    onClick={() => {
+                      setOptPaused(true);
+                      setOptFrame(pb.start_frame);
+                      send('playback_stop', { id: camera.id });
+                    }}
+                  >
+                    <BsStopFill />
+                  </Button>
+                </OverlayTrigger>
+                <OverlayTrigger placement="top" overlay={<Tooltip>Previous frame</Tooltip>}>
+                  <span>
+                    <Button
+                      variant="outline-light"
+                      size="sm"
+                      disabled={!paused}
+                      onClick={() => {
+                        setOptFrame(Math.max(pb.start_frame, frame - 1));
+                        send('playback_step_back', { id: camera.id });
+                      }}
+                    >
+                      <BsSkipBackwardFill />
+                    </Button>
+                  </span>
+                </OverlayTrigger>
+                <Button
+                  variant={paused ? 'outline-success' : 'outline-warning'}
+                  size="sm"
+                  onClick={() => {
+                    setOptPaused(!paused);
+                    send(paused ? 'playback_resume' : 'playback_pause', { id: camera.id });
+                  }}
+                  title={paused ? 'Play' : 'Pause'}
+                >
+                  {paused ? <BsPlayFill /> : <BsPauseFill />}
+                </Button>
+                <OverlayTrigger placement="top" overlay={<Tooltip>Next frame</Tooltip>}>
+                  <span>
+                    <Button
+                      variant="outline-light"
+                      size="sm"
+                      disabled={!paused}
+                      onClick={() => {
+                        setOptFrame(Math.min(pb.end_frame, frame + 1));
+                        send('playback_step', { id: camera.id });
+                      }}
+                    >
+                      <BsSkipForwardFill />
+                    </Button>
+                  </span>
+                </OverlayTrigger>
+
+                <Form.Range
+                  className="flex-grow-1"
+                  value={frame}
+                  min={pb.start_frame}
+                  max={pb.end_frame}
+                  onChange={e => {
+                    const f = Number(e.target.value);
+                    setOptFrame(f);
+                    send('playback_seek', { id: camera.id, frame: f });
+                  }}
+                  title={`Frame ${frame}`}
+                />
+
+                <span className="font-monospace small text-muted text-nowrap">
+                  {formatTime(frame, fps)} / {formatTime(pb.total_frames, fps)}
+                </span>
+                <span className="font-monospace small text-muted text-nowrap">
+                  F{frame}
+                </span>
+              </div>
+
+              {/* Range controls */}
+              <div className="d-flex align-items-center gap-2">
+                <Button
+                  variant={rangeEditing ? 'outline-info' : 'outline-secondary'}
+                  size="sm"
+                  onClick={() => {
+                    if (!rangeEditing) {
+                      setLocalStart(String(pb.start_frame));
+                      setLocalEnd(String(pb.end_frame));
+                    }
+                    setRangeEditing(!rangeEditing);
+                  }}
+                >
+                  {rangeEditing ? 'Done' : 'Set Range'}
+                </Button>
+                {rangeEditing && (
+                  <>
+                    <span className="small text-muted">Start:</span>
+                    <Form.Control
+                      type="number"
+                      size="sm"
+                      className="bg-dark text-light border-secondary"
+                      style={{ width: 80 }}
+                      value={localStart}
+                      min={0}
+                      max={pb.end_frame - 1}
+                      onChange={e => setLocalStart(e.target.value)}
+                      onBlur={() => commitRange('start_frame', localStart)}
+                      onKeyDown={e => { if (e.key === 'Enter') commitRange('start_frame', localStart); }}
+                    />
+                    <span className="small text-muted">End:</span>
+                    <Form.Control
+                      type="number"
+                      size="sm"
+                      className="bg-dark text-light border-secondary"
+                      style={{ width: 80 }}
+                      value={localEnd}
+                      min={pb.start_frame + 1}
+                      max={pb.total_frames}
+                      onChange={e => setLocalEnd(e.target.value)}
+                      onBlur={() => commitRange('end_frame', localEnd)}
+                      onKeyDown={e => { if (e.key === 'Enter') commitRange('end_frame', localEnd); }}
+                    />
+                    <Button
+                      variant="outline-secondary"
+                      size="sm"
+                      onClick={() => {
+                        send('playback_set_range', { id: camera.id, start_frame: 0, end_frame: pb.total_frames });
+                        setLocalStart('0');
+                        setLocalEnd(String(pb.total_frames));
+                      }}
+                    >
+                      Reset
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Settings panel */}

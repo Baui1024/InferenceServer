@@ -301,12 +301,19 @@ class CameraPipeline:
         with self._lock:
             return self._latest_jpeg
 
+    def get_recording_input(self):
+        """Return the RecordingInput if this is a recording pipeline, else None."""
+        from app.inputs.recording_input import RecordingInput
+        if isinstance(self._receiver, RecordingInput):
+            return self._receiver
+        return None
+
     def get_stats(self) -> dict:
         with self._lock:
             motion_pct = 0.0
             if self._motion_detector:
                 motion_pct = round(self._motion_detector.last_change_percent, 2)
-            return {
+            stats = {
                 "id": self.camera_id,
                 "status": self._status,
                 "fps": round(self._fps, 1),
@@ -315,6 +322,10 @@ class CameraPipeline:
                 "frame_count": self._frame_count,
                 "motion_pct": motion_pct,
             }
+            # Add playback info if this is a recording pipeline
+            if self._receiver and hasattr(self._receiver, 'get_playback_info'):
+                stats["playback"] = self._receiver.get_playback_info()
+            return stats
 
 
 # ---------------------------------------------------------------------------

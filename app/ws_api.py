@@ -104,6 +104,14 @@ class WebSocketAPI:
             "list_recordings": self._handle_list_recordings,
             "delete_recording": self._handle_delete_recording,
             "play_recording": self._handle_play_recording,
+            # Playback controls
+            "playback_pause": self._handle_playback_pause,
+            "playback_resume": self._handle_playback_resume,
+            "playback_step": self._handle_playback_step,
+            "playback_step_back": self._handle_playback_step_back,
+            "playback_seek": self._handle_playback_seek,
+            "playback_stop": self._handle_playback_stop,
+            "playback_set_range": self._handle_playback_set_range,
             # TensorRT engines
             "list_engines": self._handle_list_engines,
             "compile_engine": self._handle_compile_engine,
@@ -226,18 +234,21 @@ class WebSocketAPI:
 
     # -- Stats broadcast loop --
 
+    async def _broadcast_stats(self) -> None:
+        """Broadcast camera stats to all clients immediately."""
+        stats = self.manager.get_all_stats()
+        if stats and self._clients:
+            if config.RECORDING_ENABLED:
+                for s in stats:
+                    p = self.manager.get_pipeline(s["id"])
+                    s["recording"] = p.is_recording if p else False
+            await self._broadcast("camera_stats", stats)
+
     async def _stats_loop(self) -> None:
         """Broadcast camera stats to all clients every 2 seconds."""
         while True:
             await asyncio.sleep(2)
-            stats = self.manager.get_all_stats()
-            if stats and self._clients:
-                # Attach recording state
-                if config.RECORDING_ENABLED:
-                    for s in stats:
-                        p = self.manager.get_pipeline(s["id"])
-                        s["recording"] = p.is_recording if p else False
-                await self._broadcast("camera_stats", stats)
+            await self._broadcast_stats()
 
     # -- Recording handlers --
 
@@ -315,6 +326,63 @@ class WebSocketAPI:
         await self.manager.start_camera(camera)
         await self._broadcast("cameras", self.store.all())
         await self._broadcast("playback_started", {"camera_id": camera["id"]})
+
+    # -- Playback control helpers --
+
+    def _get_recording_input(self, data):
+        """Get the RecordingInput for a camera, or None."""
+        cam_id = data.get("id", "")
+        pipeline = self.manager.get_pipeline(cam_id)
+        if not pipeline:
+            return None
+        return pipeline.get_recording_input()
+
+    async def _handle_playback_pause(self, ws, data):
+        ri = self._get_recording_input(data)
+        if ri:
+            ri.pause()
+            await self._broadcast_stats()
+
+    async def _handle_playback_resume(self, ws, data):
+        ri = self._get_recording_input(data)
+        if ri:
+            ri.resume()
+            await self._broadcast_stats()
+
+    async def _handle_playback_step(self, ws, data):
+        ri = self._get_recording_input(data)
+        if ri:
+            ri.step_forward()
+            await self._broadcast_stats()
+
+    async def _handle_playback_step_back(self, ws, data):
+        ri = self._get_recording_input(data)
+        if ri:
+            ri.step_backward()
+            await self._broadcast_stats()
+
+    async def _handle_playback_seek(self, ws, data):
+        ri = self._get_recording_input(data)
+        if ri:
+            frame = data.get("frame", 0)
+            ri.seek(int(frame))
+            await self._broadcast_stats()
+
+    async def _handle_playback_stop(self, ws, data):
+        ri = self._get_recording_input(data)
+        if ri:
+            ri.pause()
+            ri.seek(ri.start_frame)
+            await self._broadcast_stats()
+
+    async def _handle_playback_set_range(self, ws, data):
+        ri = self._get_recording_input(data)
+        if ri:
+            ri.set_range(
+                start=data.get("start_frame"),
+                end=data.get("end_frame"),
+            )
+            await self._broadcast_stats()
 
     # -- TensorRT engine handlers --
 
