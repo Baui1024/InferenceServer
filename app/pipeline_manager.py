@@ -11,6 +11,7 @@ from loguru import logger
 
 import app.config as config
 from app.motion_detector import MotionDetector
+from app.zone_evaluator import ZoneEvaluator
 from app.inputs.base import InputReceiver
 from app.recorder import VideoRecorder
 
@@ -132,6 +133,11 @@ class CameraPipeline:
         # Recording (pre-detection raw frames)
         self._recorder: Optional[VideoRecorder] = None
 
+        # Zone automation
+        self._zone_evaluator = ZoneEvaluator()
+        self._zone_states: list[dict] = []  # latest evaluation results
+        self._on_zone_transition = None  # callback for trigger execution
+
     # -- Lifecycle --
 
     async def start(self) -> None:
@@ -233,6 +239,8 @@ class CameraPipeline:
 
         # Motion detection skip
         if self._motion_detector and not self._motion_detector.has_motion(frame):
+            # Still evaluate zones with empty detections so hold timers can expire
+            self._evaluate_zones([], frame.shape[:2])
             if self.cfg.get("show_motion_debug"):
                 frame = self._overlay_motion(frame)
             self._encode_and_store(frame)
@@ -248,6 +256,9 @@ class CameraPipeline:
 
         annotated = draw_detections(frame, detections) if detections else frame
 
+        # Zone evaluation
+        self._evaluate_zones(detections, frame.shape[:2])
+
         if self._motion_detector and self.cfg.get("show_motion_debug"):
             annotated = self._overlay_motion(annotated)
 
@@ -260,6 +271,59 @@ class CameraPipeline:
                 self._inference_times.clear()
 
         self._encode_and_store(annotated)
+
+    def set_zone_transition_callback(self, callback) -> None:
+        """Set callback for zone state transitions: callback(zone_cfg, transition)."""
+        self._on_zone_transition = callback
+
+    def _evaluate_zones(self, detections: list, frame_shape: tuple) -> None:
+        """Run zone evaluation and fire transition callbacks."""
+        zones = self.cfg.get("zones", [])
+        if not zones:
+            return
+        h, w = frame_shape[:2]
+        zone_results = self._zone_evaluator.evaluate(zones, detections, w, h)
+        with self._lock:
+            self._zone_states = zone_results
+        for zr in zone_results:
+            if zr["transition"] and self._on_zone_transition:
+                zone_cfg = next((z for z in zones if z["id"] == zr["zone_id"]), None)
+                if zone_cfg:
+                    self._on_zone_transition(zone_cfg, zr["transition"])
+
+    def _draw_zones(self, frame: np.ndarray, zones: list[dict], zone_results: list[dict]) -> np.ndarray:
+        """Draw zone polygons on the frame."""
+        h, w = frame.shape[:2]
+        overlay = frame.copy()
+        active_ids = {zr["zone_id"] for zr in zone_results if zr["active"]}
+
+        for zone in zones:
+            if not zone.get("enabled", True):
+                continue
+            points = zone.get("points", [])
+            if len(points) < 3:
+                continue
+            pts = np.array(
+                [[int(p[0] * w), int(p[1] * h)] for p in points],
+                dtype=np.int32,
+            )
+            is_active = zone["id"] in active_ids
+            color = (0, 140, 255) if is_active else (0, 200, 0)  # orange active, green inactive
+
+            # Semi-transparent fill
+            cv2.fillPoly(overlay, [pts], color)
+            # Solid border
+            cv2.polylines(frame, [pts], isClosed=True, color=color, thickness=2)
+
+            # Zone label at centroid
+            cx = int(np.mean(pts[:, 0]))
+            cy = int(np.mean(pts[:, 1]))
+            label = zone.get("name", zone["id"][:6])
+            cv2.putText(frame, label, (cx - 20, cy), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+
+        # Blend overlay (20% fill opacity)
+        cv2.addWeighted(overlay, 0.2, frame, 0.8, 0, frame)
+        return frame
 
     def _overlay_motion(self, frame: np.ndarray) -> np.ndarray:
         """Overlay a motion heatmap + stats text onto the frame."""
@@ -325,6 +389,11 @@ class CameraPipeline:
             # Add playback info if this is a recording pipeline
             if self._receiver and hasattr(self._receiver, 'get_playback_info'):
                 stats["playback"] = self._receiver.get_playback_info()
+
+            # Add zone states
+            if self._zone_states:
+                stats["zone_states"] = self._zone_states
+
             return stats
 
 

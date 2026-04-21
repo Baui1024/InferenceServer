@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import type { WSState } from '../hooks/useWebSocket';
-import type { Camera, CameraStats, CameraHWSettings, Recording, ServerConfig, TRTEngine, EngineCompileProgress } from '../types/camera';
+import type { Camera, CameraStats, CameraHWSettings, Recording, ServerConfig, TRTEngine, EngineCompileProgress, AutomationSettings } from '../types/camera';
 
 interface CameraContextValue {
   cameras: Camera[];
@@ -14,6 +14,7 @@ interface CameraContextValue {
   serverConfig: ServerConfig;
   engines: TRTEngine[];
   compileProgress: EngineCompileProgress | null;
+  automationSettings: AutomationSettings;
 }
 
 const CameraContext = createContext<CameraContextValue>(null!);
@@ -28,6 +29,12 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
   const [serverConfig, setServerConfig] = useState<ServerConfig>({ recording_enabled: false, gpu: { name: null, capability: null }, compilable_models: [] });
   const [engines, setEngines] = useState<TRTEngine[]>([]);
   const [compileProgress, setCompileProgress] = useState<EngineCompileProgress | null>(null);
+  const [automationSettings, setAutomationSettings] = useState<AutomationSettings>({
+    knx_gateway_ip: '192.168.178.5',
+    knx_gateway_port: 3671,
+    knx_connection_type: 'tunneling',
+    knx_enabled: false,
+  });
 
   // Use ref to avoid stale closures in the WS callback
   const camerasRef = useRef(cameras);
@@ -40,9 +47,14 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
         setServerConfig(msg.data as ServerConfig);
         break;
 
-      case 'cameras':
-        setCameras(msg.data as Camera[]);
+      case 'cameras': {
+        const incoming = msg.data as Camera[];
+        setCameras(prev => {
+          const prevMap = new Map(prev.map(c => [c.id, c]));
+          return incoming.map(c => ({ ...c, stats: c.stats ?? prevMap.get(c.id)?.stats }));
+        });
         break;
+      }
 
       case 'camera': {
         const cam = msg.data as Camera;
@@ -97,6 +109,10 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
         console.error('Engine compile error:', msg.data);
         break;
 
+      case 'automation_settings':
+        setAutomationSettings(msg.data as AutomationSettings);
+        break;
+
       case 'recording_started':
       case 'recording_stopped':
         // Refresh recordings list
@@ -124,7 +140,7 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
     <CameraContext.Provider value={{
       cameras, selectedId, selectCamera: setSelectedId,
       wsState, send, hwSettings, recordings, serverConfig,
-      engines, compileProgress,
+      engines, compileProgress, automationSettings,
     }}>
       {children}
     </CameraContext.Provider>

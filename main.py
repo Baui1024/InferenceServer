@@ -24,7 +24,7 @@ logger.remove()
 logger.add(
     sys.stderr,
     format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | {message}",
-    level="INFO",
+    level="DEBUG",
 )
 
 # ---------------------------------------------------------------------------
@@ -54,6 +54,9 @@ async def main() -> None:
     logger.info(f"Starting {len(cameras)} camera pipeline(s)...")
     await manager.start_all(cameras)
 
+    # Wire zone transition callbacks now that pipelines exist
+    server.ws_api._wire_zone_callbacks()
+
     logger.info(f"Open http://localhost:{WEB_PORT} in your browser — Ctrl+C to quit")
 
     stop = asyncio.Event()
@@ -63,18 +66,28 @@ async def main() -> None:
         try:
             loop.add_signal_handler(sig_name, stop.set)
         except NotImplementedError:
-            pass  # Windows
+            pass  # Windows — handled via KeyboardInterrupt below
 
     try:
         await stop.wait()
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, asyncio.CancelledError):
         pass
 
     logger.info("Shutting down...")
-    await manager.stop_all()
-    await server.stop()
+    # Stop pipelines first (kills frame-processing threads that block server cleanup)
+    try:
+        await asyncio.wait_for(manager.stop_all(), timeout=5.0)
+    except (asyncio.TimeoutError, Exception) as e:
+        logger.warning(f"Manager stop timed out or failed: {e}")
+    try:
+        await asyncio.wait_for(server.stop(), timeout=5.0)
+    except (asyncio.TimeoutError, Exception) as e:
+        logger.warning(f"Server stop timed out or failed: {e}")
     logger.info("Shutdown complete")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Interrupted — bye")

@@ -38,6 +38,8 @@ _DEFAULTS = {
     "show_motion_debug": False,
     # Camera hardware WS (RPi only)
     "camera_ws_port": 8082,
+    # Automation zones
+    "zones": [],
 }
 
 # Fields that require a pipeline restart when changed

@@ -33,6 +33,8 @@ class WebStreamServer:
         self.manager = manager
         self.ws_api = WebSocketAPI(store, manager)
         self._runner: Optional[web.AppRunner] = None
+        self._shutdown = asyncio.Event()
+        self._stream_tasks: set[asyncio.Task] = set()
 
     # -- HTTP handlers --
 
@@ -50,9 +52,13 @@ class WebStreamServer:
         )
         await response.prepare(request)
 
+        task = asyncio.current_task()
+        if task:
+            self._stream_tasks.add(task)
+
         last_jpeg = None
         try:
-            while not response.task.done():
+            while not response.task.done() and not self._shutdown.is_set():
                 jpeg = self.manager.get_latest_jpeg(camera_id)
                 if jpeg is not None and jpeg is not last_jpeg:
                     last_jpeg = jpeg
@@ -69,6 +75,9 @@ class WebStreamServer:
                 await asyncio.sleep(0.033)
         except (ConnectionResetError, ConnectionAbortedError, asyncio.CancelledError):
             pass
+        finally:
+            if task:
+                self._stream_tasks.discard(task)
 
         return response
 
@@ -151,6 +160,13 @@ class WebStreamServer:
         logger.info(f"Web server at http://{self.host}:{self.port}")
 
     async def stop(self) -> None:
+        # Signal all MJPEG stream loops to exit
+        self._shutdown.set()
+        # Cancel any that are still blocked in asyncio.sleep
+        for task in list(self._stream_tasks):
+            task.cancel()
+        if self._stream_tasks:
+            await asyncio.gather(*self._stream_tasks, return_exceptions=True)
         await self.ws_api.stop()
         if self._runner:
             await self._runner.cleanup()

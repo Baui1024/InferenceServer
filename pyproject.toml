@@ -13,6 +13,7 @@ dependencies = [
     "torchvision>=0.15",
     "openvino>=2026.0.0",
     "aiohttp>=3.13.3",
+    "xknx>=3.5.0",
     "tensorrt-cu12>=10.16",
     "tensorrt-cu12-bindings>=10.16",
     "tensorrt-cu12-libs>=10.16",

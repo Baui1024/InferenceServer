@@ -1,0 +1,6 @@
+{
+  "knx_gateway_ip": "192.168.178.198",
+  "knx_gateway_port": 3671,
+  "knx_connection_type": "tunneling",
+  "knx_enabled": true
+}

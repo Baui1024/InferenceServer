@@ -1,9 +1,11 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Tab, Tabs, Badge, Button, Form, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import { BsArrowLeft, BsTrash, BsRecordCircle, BsStopCircle, BsPauseFill, BsPlayFill, BsSkipForwardFill, BsSkipBackwardFill, BsStopFill } from 'react-icons/bs';
 import { useCameras } from '../context/CameraContext';
 import CameraSettings from './CameraSettings';
 import CameraHWSettingsPanel from './CameraHWSettings';
+import AutomationPanel from './AutomationPanel';
+import ZoneOverlay from './ZoneOverlay';
 
 export default function CameraView() {
   const { cameras, selectedId, selectCamera, send, serverConfig } = useCameras();
@@ -15,6 +17,10 @@ export default function CameraView() {
   // Optimistic playback state — flips instantly on click, reconciled by backend stats
   const [optPaused, setOptPaused] = useState<boolean | null>(null);
   const [optFrame, setOptFrame] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState('detection');
+  const [imgSize, setImgSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  const imgContainerRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
 
   // Sync local range inputs when playback info changes and we're not editing
   const pb = camera?.stats?.playback;
@@ -33,6 +39,17 @@ export default function CameraView() {
       setLocalEnd(String(pb.end_frame));
     }
   }, [pb?.start_frame, pb?.end_frame, rangeEditing]);
+
+  // Track rendered image size for ZoneOverlay
+  useEffect(() => {
+    const img = imgRef.current;
+    if (!img) return;
+    const update = () => setImgSize({ w: img.clientWidth, h: img.clientHeight });
+    const ro = new ResizeObserver(update);
+    ro.observe(img);
+    img.addEventListener('load', update);
+    return () => { ro.disconnect(); img.removeEventListener('load', update); };
+  }, [camera?.stats?.status]);
 
   const commitRange = useCallback((field: 'start_frame' | 'end_frame', value: string) => {
     const num = parseInt(value, 10);
@@ -121,14 +138,27 @@ export default function CameraView() {
           )}
         </div>
 
-        {/* MJPEG stream */}
+        {/* MJPEG stream with zone overlay */}
         <div className="flex-grow-1 d-flex align-items-center justify-content-center" style={{ overflow: 'hidden' }}>
           {camera.stats?.status === 'running' ? (
-            <img
-              src={`/stream/${camera.id}`}
-              alt={camera.name}
-              style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
-            />
+            <div ref={imgContainerRef} style={{ position: 'relative', display: 'inline-block' }}>
+              <img
+                ref={imgRef}
+                src={`/stream/${camera.id}`}
+                alt={camera.name}
+                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' }}
+              />
+              {(camera.zones?.length ?? 0) > 0 && imgSize.w > 0 && (
+                <ZoneOverlay
+                  zones={camera.zones ?? []}
+                  zoneStates={camera.stats?.zone_states ?? []}
+                  onUpdate={zones => send('update_camera', { id: camera.id, zones })}
+                  interactive={activeTab === 'automation'}
+                  width={imgSize.w}
+                  height={imgSize.h}
+                />
+              )}
+            </div>
           ) : (
             <span className="text-muted">
               {camera.stats?.status === 'error' ? 'Connection error' : 'Waiting for stream...'}
@@ -289,12 +319,15 @@ export default function CameraView() {
         className="bg-dark border-start border-secondary overflow-auto"
         style={{ width: 340, flexShrink: 0 }}
       >
-        <Tabs defaultActiveKey="detection" className="px-2 pt-2">
+        <Tabs activeKey={activeTab} onSelect={k => setActiveTab(k ?? 'detection')} className="px-2 pt-2">
           <Tab eventKey="detection" title="Detection">
             <CameraSettings camera={camera} />
           </Tab>
           <Tab eventKey="camera" title="Camera" disabled={camera.type !== 'rpi'}>
             <CameraHWSettingsPanel camera={camera} />
+          </Tab>
+          <Tab eventKey="automation" title="Automation">
+            <AutomationPanel camera={camera} />
           </Tab>
         </Tabs>
       </div>

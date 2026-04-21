@@ -25,3 +25,12 @@ CAMERAS_FILE = "cameras.json"
 
 RECORDING_ENABLED = os.environ.get("RECORDING_ENABLED", "0") == "1"
 RECORDINGS_DIR = os.environ.get("RECORDINGS_DIR", "recordings")
+
+# =============================================================================
+# Automation / KNX  (global defaults, overridden by automation_settings.json)
+# =============================================================================
+
+AUTOMATION_SETTINGS_FILE = "automation_settings.json"
+KNX_GATEWAY_IP = os.environ.get("KNX_GATEWAY_IP", "192.168.178.5")
+KNX_GATEWAY_PORT = int(os.environ.get("KNX_GATEWAY_PORT", "3671"))
+KNX_CONNECTION_TYPE = os.environ.get("KNX_CONNECTION_TYPE", "tunneling")  # tunneling | routing

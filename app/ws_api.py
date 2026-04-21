@@ -17,6 +17,9 @@ from app.engine_manager import (
     list_engines, delete_engine, compile_engine, COMPILABLE_MODELS,
     _gpu_info, get_engine_path, ENGINES_DIR,
 )
+from app.knx_manager import KNXManager
+from app.automation_settings import AutomationSettingsStore
+from app.trigger_executor import execute_triggers
 
 
 class WebSocketAPI:
@@ -32,12 +35,25 @@ class WebSocketAPI:
         # HW proxy manager — forwards camera settings to RPi
         self.hw_proxies = HWProxyManager(on_settings=self._on_hw_settings)
 
+        # Automation / KNX
+        self.automation_store = AutomationSettingsStore()
+        self.knx = KNXManager()
+
     async def start(self) -> None:
-        """Start periodic stats broadcast."""
+        """Start periodic stats broadcast and KNX connection."""
         self._stats_task = asyncio.create_task(self._stats_loop())
+        # Auto-connect KNX if enabled
+        auto = self.automation_store.get()
+        if auto.get("knx_enabled"):
+            await self.knx.start(
+                auto["knx_gateway_ip"],
+                auto["knx_gateway_port"],
+                auto["knx_connection_type"],
+            )
+        # Note: zone transition callbacks are wired after pipelines start (see main.py)
 
     async def stop(self) -> None:
-        """Stop stats broadcast and HW proxies."""
+        """Stop stats broadcast, HW proxies, and KNX."""
         if self._stats_task:
             self._stats_task.cancel()
             try:
@@ -45,6 +61,7 @@ class WebSocketAPI:
             except asyncio.CancelledError:
                 pass
         await self.hw_proxies.stop_all()
+        await self.knx.stop()
 
     # -- WebSocket handler (aiohttp route) --
 
@@ -76,6 +93,10 @@ class WebSocketAPI:
             "compilable_models": COMPILABLE_MODELS,
         })
         await self._send(ws, "engines", list_engines())
+        # Automation settings
+        auto = self.automation_store.get()
+        auto["knx"] = self.knx.get_info()
+        await self._send(ws, "automation_settings", auto)
 
     # -- Message dispatch --
 
@@ -116,6 +137,9 @@ class WebSocketAPI:
             "list_engines": self._handle_list_engines,
             "compile_engine": self._handle_compile_engine,
             "delete_engine": self._handle_delete_engine,
+            # Automation
+            "get_automation_settings": self._handle_get_automation,
+            "update_automation_settings": self._handle_update_automation,
         }.get(msg_type)
 
         if handler:
@@ -126,12 +150,19 @@ class WebSocketAPI:
     # -- Camera CRUD handlers --
 
     async def _handle_list(self, ws, data):
+        cameras = self._cameras_with_stats()
+        await self._send(ws, "cameras", cameras)
+
+    def _cameras_with_stats(self):
         cameras = self.store.all()
         stats = self.manager.get_all_stats()
         stats_map = {s["id"]: s for s in stats}
         for cam in cameras:
             cam["stats"] = stats_map.get(cam["id"], {})
-        await self._send(ws, "cameras", cameras)
+        return cameras
+
+    async def _broadcast_cameras(self):
+        await self._broadcast("cameras", self._cameras_with_stats())
 
     async def _handle_get(self, ws, data):
         camera = self.store.get(data.get("id", ""))
@@ -146,7 +177,10 @@ class WebSocketAPI:
         camera = self.store.add(data)
         if camera.get("enabled", True):
             await self.manager.start_camera(camera)
-        await self._broadcast("cameras", self.store.all())
+            p = self.manager.get_pipeline(camera["id"])
+            if p:
+                self._set_zone_callback(p, camera.get("name", camera["id"][:8]))
+        await self._broadcast_cameras()
 
     async def _handle_update(self, ws, data):
         camera_id = data.pop("id", None)
@@ -163,10 +197,18 @@ class WebSocketAPI:
         if needs_restart:
             if camera.get("enabled", True):
                 await self.manager.start_camera(camera)
+                p = self.manager.get_pipeline(camera_id)
+                if p:
+                    self._set_zone_callback(p, camera.get("name", camera_id[:8]))
             else:
                 await self.manager.stop_camera(camera_id)
+        else:
+            # Sync live config to the running pipeline (e.g. zones, thresholds)
+            p = self.manager.get_pipeline(camera_id)
+            if p:
+                p.cfg.update(data)
 
-        await self._broadcast("cameras", self.store.all())
+        await self._broadcast_cameras()
 
     async def _handle_remove(self, ws, data):
         camera_id = data.get("id", "")
@@ -175,7 +217,7 @@ class WebSocketAPI:
         removed = self.store.remove(camera_id)
         if removed:
             await self._broadcast("camera_removed", {"id": camera_id})
-            await self._broadcast("cameras", self.store.all())
+            await self._broadcast_cameras()
         else:
             await self._send(ws, "error", {"message": "Camera not found"})
 
@@ -434,6 +476,51 @@ class WebSocketAPI:
             await self._broadcast("engines", list_engines())
         else:
             await self._send(ws, "error", {"message": "Engine not found"})
+
+    # -- Automation handlers --
+
+    async def _handle_get_automation(self, ws, data):
+        auto = self.automation_store.get()
+        auto["knx"] = self.knx.get_info()
+        await self._send(ws, "automation_settings", auto)
+
+    async def _handle_update_automation(self, ws, data):
+        auto = self.automation_store.update(data)
+        # Reconnect / disconnect KNX based on new settings
+        if auto.get("knx_enabled"):
+            await self.knx.reconnect(
+                auto["knx_gateway_ip"],
+                auto["knx_gateway_port"],
+                auto["knx_connection_type"],
+            )
+        else:
+            await self.knx.stop()
+        auto["knx"] = self.knx.get_info()
+        await self._broadcast("automation_settings", auto)
+
+    def _wire_zone_callbacks(self) -> None:
+        """Wire zone transition callbacks for all existing pipelines."""
+        for cid, pipeline in self.manager._pipelines.items():
+            cam = self.store.get(cid)
+            cam_name = cam.get("name", cid[:8]) if cam else cid[:8]
+            self._set_zone_callback(pipeline, cam_name)
+
+    def _set_zone_callback(self, pipeline, camera_name: str) -> None:
+        """Set the zone transition callback on a pipeline."""
+        knx = self.knx
+
+        def on_transition(zone_cfg: dict, transition: str):
+            asyncio.run_coroutine_threadsafe(
+                execute_triggers(zone_cfg, transition, knx, camera_name),
+                pipeline._loop,
+            )
+            # Push updated stats immediately so frontend reflects zone change
+            asyncio.run_coroutine_threadsafe(
+                self._broadcast_stats(),
+                pipeline._loop,
+            )
+
+        pipeline.set_zone_transition_callback(on_transition)
 
     # -- Messaging helpers --
 

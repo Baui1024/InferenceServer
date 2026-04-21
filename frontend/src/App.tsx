@@ -9,8 +9,9 @@ import CameraView from './components/CameraView';
 import AddCameraModal from './components/AddCameraModal';
 import RecordingsPanel from './components/RecordingsPanel';
 import EngineManager from './components/EngineManager';
+import AutomationGlobalSettings from './components/AutomationGlobalSettings';
 
-type View = 'cameras' | 'recordings' | 'engines';
+type View = 'cameras' | 'recordings' | 'engines' | 'settings';
 
 function AppContent() {
   const { selectedId } = useCameras();
@@ -21,6 +22,7 @@ function AppContent() {
     if (selectedId) return <CameraView />;
     if (view === 'recordings') return <RecordingsPanel />;
     if (view === 'engines') return <EngineManager />;
+    if (view === 'settings') return <AutomationGlobalSettings />;
     return <CameraGrid />;
   };
 

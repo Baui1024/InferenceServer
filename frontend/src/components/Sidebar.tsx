@@ -1,5 +1,5 @@
 import { ListGroup, Button, Nav } from 'react-bootstrap';
-import { BsCameraVideo, BsPlusLg, BsCameraReels, BsGrid, BsGpuCard } from 'react-icons/bs';
+import { BsCameraVideo, BsPlusLg, BsCameraReels, BsGrid, BsGpuCard, BsGear } from 'react-icons/bs';
 import { useCameras } from '../context/CameraContext';
 import type { Camera } from '../types/camera';
 
@@ -12,8 +12,8 @@ function statusColor(cam: Camera): string {
 
 interface Props {
   onAddClick: () => void;
-  view: 'cameras' | 'recordings' | 'engines';
-  onViewChange: (v: 'cameras' | 'recordings' | 'engines') => void;
+  view: 'cameras' | 'recordings' | 'engines' | 'settings';
+  onViewChange: (v: 'cameras' | 'recordings' | 'engines' | 'settings') => void;
 }
 
 export default function Sidebar({ onAddClick, view, onViewChange }: Props) {
@@ -58,6 +58,16 @@ export default function Sidebar({ onAddClick, view, onViewChange }: Props) {
             style={{ fontSize: '0.8rem' }}
           >
             <BsGpuCard size={12} /> Engines
+          </Nav.Link>
+        </Nav.Item>
+        <Nav.Item>
+          <Nav.Link
+            active={view === 'settings' && !selectedId}
+            onClick={() => { selectCamera(null); onViewChange('settings'); }}
+            className="py-1 px-2 d-flex align-items-center gap-1"
+            style={{ fontSize: '0.8rem' }}
+          >
+            <BsGear size={12} /> Settings
           </Nav.Link>
         </Nav.Item>
       </Nav>
