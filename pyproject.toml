@@ -3,11 +3,11 @@ name = "inference-server"
 version = "0.2.0"
 description = "Camera stream inference server — receives RPi MJPEG streams over TCP/TLS"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 dependencies = [
     "loguru>=0.7.3",
     "numpy>=2.4.3",
-    "opencv-python>=4.13.0.92",
+    "opencv-python-headless>=4.13.0.92",
     "ultralytics>=8.4.24",
     "torch>=2.0",
     "torchvision>=0.15",
