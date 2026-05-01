@@ -1,0 +1,14 @@
+/*custom css*/
+.app__body {
+    display: flex;
+    height: 100%;
+}
+@media (max-width: 767.98px) {
+    .app__body {
+        flex-direction: column;
+    }
+    
+    .sidebar {
+        height: min-content !important;
+    }
+}

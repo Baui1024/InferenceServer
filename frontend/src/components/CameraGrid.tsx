@@ -61,7 +61,7 @@ export default function CameraGrid() {
 
   if (cameras.length === 0) {
     return (
-      <div className="d-flex align-items-center justify-content-center h-100 text-muted">
+      <div className="d-flex align-items-center justify-content-center h-100 text-muted ">
         <div className="text-center">
           <BsCameraVideo size={48} className="mb-3 opacity-50" />
           <p>No cameras configured.</p>
@@ -72,7 +72,7 @@ export default function CameraGrid() {
   }
 
   return (
-    <div className="p-3 overflow-auto h-100">
+    <div className="main-content p-3 overflow-auto h-100">
       <Row xs={1} sm={2} lg={3} xl={4} className="g-3">
         {cameras.map(cam => (
           <Col key={cam.id}>

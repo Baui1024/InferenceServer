@@ -27,10 +27,10 @@ function AppContent() {
   };
 
   return (
-    <div className="d-flex flex-column vh-100">
-      <Navbar bg="dark" variant="dark" className="border-bottom border-secondary px-3 py-1" style={{ flexShrink: 0 }}>
-        <Container fluid className="px-0">
-          <Navbar.Brand className="d-flex align-items-center gap-2 mb-0">
+    <div className="main-app d-flex flex-column vh-100">
+      <Navbar bg="dark" variant="dark" className="navbar border-bottom border-secondary px-3 py-1" style={{ flexShrink: 0 }}>
+        <Container fluid className="container px-0">
+          <Navbar.Brand className="navbar__brand d-flex align-items-center gap-2 mb-0">
             <BsCameraReels size={20} />
             <span className="fw-bold">Inference Server</span>
             <ConnectionStatus />
@@ -38,13 +38,13 @@ function AppContent() {
         </Container>
       </Navbar>
 
-      <div className="d-flex flex-grow-1 overflow-hidden">
+      <div className="container-fluid app__body">
         <Sidebar
           onAddClick={() => setShowAdd(true)}
           view={view}
           onViewChange={setView}
         />
-        <div className="flex-grow-1 overflow-hidden">
+        <div className="main-content__wrapper flex-grow-1 overflow-hidden  col-12 col-sm-12 col-md-9">
           {mainContent()}
         </div>
       </div>
