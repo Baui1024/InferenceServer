@@ -24,6 +24,10 @@ if [[ ! -x "$PYTHON" ]]; then
     sudo -u "$RUN_USER" bash -c "cd '$APP_DIR' && python3 -m venv .venv && .venv/bin/pip install --upgrade pip && .venv/bin/pip install ."
 fi
 
+# --- Build frontend ---------------------------------------------------------
+echo ">>> Building frontend …"
+sudo -u "$RUN_USER" bash -c "cd '$APP_DIR/frontend' && npm ci && npm run build"
+
 # --- Write systemd unit -----------------------------------------------------
 echo ">>> Installing systemd service → ${SERVICE_FILE}"
 cat > "$SERVICE_FILE" <<EOF
