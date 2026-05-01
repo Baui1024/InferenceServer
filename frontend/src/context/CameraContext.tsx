@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
 import { useWebSocket } from '../hooks/useWebSocket';
 import type { WSState } from '../hooks/useWebSocket';
-import type { Camera, CameraStats, CameraHWSettings, Recording, ServerConfig, TRTEngine, EngineCompileProgress, AutomationSettings } from '../types/camera';
+import type { Camera, CameraStats, CameraHWSettings, Recording, ServerConfig, TRTEngine, EngineCompileProgress, AutomationSettings, GpuStats } from '../types/camera';
 
 interface CameraContextValue {
   cameras: Camera[];
@@ -15,6 +15,7 @@ interface CameraContextValue {
   engines: TRTEngine[];
   compileProgress: EngineCompileProgress | null;
   automationSettings: AutomationSettings;
+  gpuStats: GpuStats | null;
 }
 
 const CameraContext = createContext<CameraContextValue>(null!);
@@ -35,6 +36,7 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
     knx_connection_type: 'tunneling',
     knx_enabled: false,
   });
+  const [gpuStats, setGpuStats] = useState<GpuStats | null>(null);
 
   // Use ref to avoid stale closures in the WS callback
   const camerasRef = useRef(cameras);
@@ -113,6 +115,10 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
         setAutomationSettings(msg.data as AutomationSettings);
         break;
 
+      case 'gpu_stats':
+        setGpuStats(msg.data as GpuStats);
+        break;
+
       case 'recording_started':
       case 'recording_stopped':
         // Refresh recordings list
@@ -140,7 +146,7 @@ export function CameraProvider({ children }: { children: React.ReactNode }) {
     <CameraContext.Provider value={{
       cameras, selectedId, selectCamera: setSelectedId,
       wsState, send, hwSettings, recordings, serverConfig,
-      engines, compileProgress, automationSettings,
+      engines, compileProgress, automationSettings, gpuStats,
     }}>
       {children}
     </CameraContext.Provider>

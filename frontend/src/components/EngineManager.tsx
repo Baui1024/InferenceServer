@@ -1,6 +1,7 @@
 import { Card, Table, Button, ProgressBar, Badge } from 'react-bootstrap';
 import { BsTrash, BsGpuCard, BsArrowRepeat } from 'react-icons/bs';
 import { useCameras } from '../context/CameraContext';
+import GpuMetrics from './GpuMetrics';
 
 export default function EngineManager() {
   const { serverConfig, engines, compileProgress, send } = useCameras();
@@ -30,6 +31,9 @@ export default function EngineManager() {
           )}
         </Card.Body>
       </Card>
+
+      {/* GPU utilisation metrics */}
+      <GpuMetrics />
 
       {/* Compile progress */}
       {isCompiling && (
