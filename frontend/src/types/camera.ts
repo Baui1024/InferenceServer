@@ -112,6 +112,15 @@ export interface ServerConfig {
   compilable_models: string[];
 }
 
+export interface GpuStats {
+  gpu_util: number;
+  mem_used_mb: number;
+  mem_total_mb: number;
+  temp_c: number;
+  power_w: number;
+  power_limit_w: number;
+}
+
 export interface TRTEngine {
   filename: string;
   source_model: string;

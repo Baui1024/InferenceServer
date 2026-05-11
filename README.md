@@ -50,6 +50,28 @@ uv run main.py
 
 The web UI is available at **http://localhost:8090**.
 
+### 3b. Install as a systemd service (optional)
+
+To run the server on boot as a system service:
+
+```bash
+sudo ./install.sh
+```
+
+This will:
+- Create a Python virtual environment and install dependencies (if needed)
+- Build the React frontend
+- Install and enable an `inference-server` systemd service
+
+Useful commands after installation:
+
+```bash
+journalctl -u inference-server -f        # follow logs
+sudo systemctl restart inference-server   # restart
+sudo systemctl stop inference-server      # stop
+sudo systemctl disable inference-server   # disable on boot
+```
+
 ### 4. Set up a camera
 
 On a Raspberry Pi, install [PiCamStream](https://github.com/Baui1024/PiCamStream):

@@ -2,6 +2,8 @@
 
 import asyncio
 import json
+import shutil
+import subprocess
 from typing import Optional
 
 import aiohttp
@@ -39,9 +41,39 @@ class WebSocketAPI:
         self.automation_store = AutomationSettingsStore()
         self.knx = KNXManager()
 
+    # -- GPU metrics --
+
+    @staticmethod
+    def _query_gpu_stats() -> dict | None:
+        """Query NVIDIA GPU utilisation via nvidia-smi (returns None if unavailable)."""
+        if not shutil.which("nvidia-smi"):
+            return None
+        try:
+            out = subprocess.check_output(
+                [
+                    "nvidia-smi",
+                    "--query-gpu=utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw,power.limit",
+                    "--format=csv,noheader,nounits",
+                ],
+                timeout=4,
+                text=True,
+            )
+            parts = [p.strip() for p in out.strip().split(",")]
+            return {
+                "gpu_util": int(parts[0]),
+                "mem_used_mb": int(parts[1]),
+                "mem_total_mb": int(parts[2]),
+                "temp_c": int(parts[3]),
+                "power_w": float(parts[4]),
+                "power_limit_w": float(parts[5]),
+            }
+        except Exception:
+            return None
+
     async def start(self) -> None:
         """Start periodic stats broadcast and KNX connection."""
         self._stats_task = asyncio.create_task(self._stats_loop())
+        self._gpu_stats_task = asyncio.create_task(self._gpu_stats_loop())
         # Auto-connect KNX if enabled
         auto = self.automation_store.get()
         if auto.get("knx_enabled"):
@@ -54,12 +86,13 @@ class WebSocketAPI:
 
     async def stop(self) -> None:
         """Stop stats broadcast, HW proxies, and KNX."""
-        if self._stats_task:
-            self._stats_task.cancel()
-            try:
-                await self._stats_task
-            except asyncio.CancelledError:
-                pass
+        for task in (self._stats_task, getattr(self, '_gpu_stats_task', None)):
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
         await self.hw_proxies.stop_all()
         await self.knx.stop()
 
@@ -93,6 +126,10 @@ class WebSocketAPI:
             "compilable_models": COMPILABLE_MODELS,
         })
         await self._send(ws, "engines", list_engines())
+        # Send current GPU stats snapshot
+        gpu_stats = await asyncio.get_running_loop().run_in_executor(None, self._query_gpu_stats)
+        if gpu_stats:
+            await self._send(ws, "gpu_stats", gpu_stats)
         # Automation settings
         auto = self.automation_store.get()
         auto["knx"] = self.knx.get_info()
@@ -294,6 +331,17 @@ class WebSocketAPI:
         while True:
             await asyncio.sleep(2)
             await self._broadcast_stats()
+
+    async def _gpu_stats_loop(self) -> None:
+        """Broadcast GPU utilisation metrics every 2 seconds."""
+        while True:
+            await asyncio.sleep(2)
+            if not self._clients:
+                continue
+            loop = asyncio.get_running_loop()
+            stats = await loop.run_in_executor(None, self._query_gpu_stats)
+            if stats:
+                await self._broadcast("gpu_stats", stats)
 
     # -- Recording handlers --
 

@@ -25,7 +25,7 @@ export default function Sidebar({ onAddClick, view, onViewChange }: Props) {
   };
 
   return (
-    <div className="d-flex flex-column h-100 bg-dark text-light border-end border-secondary" style={{ width: 260 }}>
+    <div className="sidebar d-flex flex-column h-100 bg-dark text-light border-end border-secondary col-12 col-sm-12 col-md-2">
       {/* View toggle */}
       <Nav variant="pills" className="px-3 pt-2 gap-1">
         <Nav.Item>
